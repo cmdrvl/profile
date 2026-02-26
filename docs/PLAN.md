@@ -196,16 +196,116 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 
 ### Output modes
 
-`profile` is a subcommand tool that mixes modes:
+`profile` is a subcommand tool that mixes modes. All `--json` output uses the unified output envelope (see [Output Envelope](#output-envelope-all---json-responses)):
 
 | Subcommand | Output mode | `--json` |
 |------------|-------------|----------|
-| `draft new`, `draft init`, `freeze` | YAML file (artifact) | N/A — output is a file |
-| `stats`, `suggest-key` | Report (human default) | Switches to JSON on stdout |
-| `lint`, `validate` | Report (human default) | Switches to JSON on stdout |
-| `list`, `show`, `diff` | Report (human default) | Switches to JSON on stdout |
+| `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
+| `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
+| `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
+| `list`, `show`, `diff` | Report (human default) | Envelope with subcommand-specific `result` |
 | `witness` | Report (human default) | N/A |
 | `push`, `pull` | Status message (deferred in v0.1) | N/A |
+
+---
+
+## Output Envelope (all `--json` responses)
+
+Every `--json` invocation wraps its result in a uniform envelope. This is the single schema an agent needs to parse any `profile` output:
+
+```json
+{
+  "version": "profile.v0",
+  "outcome": "SUCCESS",
+  "exit_code": 0,
+  "subcommand": "stats",
+  "result": { ... },
+  "profile_ref": { "profile_id": "csv.loan_tape.core.v0", "profile_sha256": "sha256:a1b2..." } | null,
+  "witness_id": "blake3:..." | null
+}
+```
+
+The outer shape is always the same. `outcome` is always one of `SUCCESS`, `ISSUES_FOUND`, `REFUSAL`. `result` varies by subcommand. `profile_ref` is populated when a profile was consumed (e.g., `stats --profile`, `lint`); null otherwise. `witness_id` links to the witness record if one was written; null if `--no-witness` or non-witnessed subcommand.
+
+For refusals, the `result` field contains the refusal detail (the existing refusal envelope's `refusal` object moves here — the outer envelope is the same shape regardless of outcome):
+
+```json
+{
+  "version": "profile.v0",
+  "outcome": "REFUSAL",
+  "exit_code": 2,
+  "subcommand": "freeze",
+  "result": {
+    "code": "E_ALREADY_FROZEN",
+    "message": "Profile already frozen",
+    "detail": { "profile_id": "csv.loan_tape.core.v0", "profile_sha256": "sha256:..." },
+    "next_command": null
+  },
+  "profile_ref": null,
+  "witness_id": null
+}
+```
+
+### Per-subcommand `result` shapes
+
+```
+validate (SUCCESS):
+  { "valid": true }
+
+validate (REFUSAL):
+  { "code": "E_INVALID_SCHEMA", ... }
+
+lint (SUCCESS — no issues):
+  { "issues": [] }
+
+lint (ISSUES_FOUND):
+  { "issues": [
+      { "kind": "missing_column", "column": "accrued_interest", "severity": "error" },
+      { "kind": "missing_key", "column": "loan_id", "severity": "error" }
+  ] }
+
+stats (SUCCESS):
+  { "row_count": 10432,
+    "columns": [
+      { "name": "loan_id", "null_rate": 0.0, "uniqueness": 1.0, "example": "LN-001" },
+      { "name": "balance", "null_rate": 0.02, "uniqueness": 0.87, "example": "250000.00" }
+  ] }
+
+suggest-key (SUCCESS):
+  { "candidates": [
+      { "column": "loan_id", "uniqueness": 1.0, "null_rate": 0.0, "rank": 1 }
+  ] }
+
+freeze (SUCCESS):
+  { "profile_id": "csv.loan_tape.core.v0", "profile_sha256": "sha256:a1b2...", "path": "profiles/csv.loan_tape.core.v0.yaml" }
+
+list (SUCCESS):
+  { "profiles": [
+      { "profile_id": "csv.loan_tape.core.v0", "profile_family": "csv.loan_tape.core", "profile_version": 0, "path": "~/.epistemic/profiles/csv.loan_tape.core.v0.yaml" }
+  ] }
+
+show (SUCCESS):
+  { "profile": { <full profile fields as JSON object> } }
+
+diff (SUCCESS — identical):
+  { "differences": [] }
+
+diff (ISSUES_FOUND — differences):
+  { "differences": [
+      { "field": "include_columns", "a": ["loan_id", "balance"], "b": ["loan_id", "balance", "rate"] }
+  ] }
+```
+
+### Why this matters
+
+The refusal system was already half of this design. Completing it into a universal envelope means:
+
+- **One parser, all subcommands.** An agent reads `outcome` first, then dispatches on `subcommand` to interpret `result`. No per-subcommand format guessing.
+- **Agents can close the loop.** `stats` result feeds into draft editing decisions. `lint` issues map to profile edits. `suggest-key` candidates flow into `--key`. The envelope makes this programmatic, not string-parsing.
+- **Witness linkage is inline.** The agent doesn't need to separately query the witness ledger to connect an output to its audit record — `witness_id` is right there.
+- **Profile lineage is inline.** When a subcommand consumed a profile, `profile_ref` records exactly which one, closing the traceability chain without requiring the agent to track it externally.
+
+Human output (without `--json`) remains free-form and human-optimized. The envelope is JSON-only.
 
 ---
 
@@ -240,7 +340,7 @@ schema_version: 1
 profile_id: csv.loan_tape.core.v0
 profile_version: 0
 profile_family: csv.loan_tape.core
-profile_sha256: "sha256:..."
+profile_sha256: "sha256:a1b2c3..."
 status: frozen
 format: csv
 
@@ -252,7 +352,8 @@ equivalence:
   float_decimals: 6
   trim_strings: true
 
-key: [loan_id]
+key:
+  - loan_id
 
 include_columns:
   - loan_id
@@ -260,6 +361,8 @@ include_columns:
   - rate
   - maturity_date
 ```
+
+The frozen file on disk uses canonical field order and block style, but includes blank lines between sections for readability and inserts `profile_sha256` as the fifth field. It is therefore *not* byte-identical to the canonical form. To verify: strip the `profile_sha256` line, strip blank lines, confirm the result matches the canonical byte string, then SHA256 it.
 
 ### Profile fields
 
@@ -269,7 +372,7 @@ include_columns:
 | `profile_id` | string | frozen only | `family.vN` (e.g., `csv.loan_tape.core.v0`) |
 | `profile_version` | int | frozen only | Monotonic within family |
 | `profile_family` | string | frozen only | Stable name (e.g., `csv.loan_tape.core`) |
-| `profile_sha256` | string | frozen only | SHA256 of canonicalized content (excludes `profile_sha256` itself to avoid circular dependency) |
+| `profile_sha256` | string | frozen only | `"sha256:<hex>"` — lowercase hex SHA256 of canonicalized content, prefixed with `sha256:`. Excludes `profile_sha256` itself to avoid circular dependency |
 | `status` | string | yes | `"draft"` or `"frozen"` |
 | `format` | string | yes | v0.1 accepts `csv`; other formats are deferred |
 | `hashing` | object | no (default on freeze) | `{ algorithm: "sha256" }` |
@@ -278,13 +381,13 @@ include_columns:
 | `equivalence.float_decimals` | int | no | Decimal places for float comparison |
 | `equivalence.trim_strings` | bool | no | Trim whitespace before comparison |
 | `key` | array | no | Key column(s) for row alignment |
-| `include_columns` | array | yes | Columns to analyze (in order) |
+| `include_columns` | array | yes | Columns to analyze (in order). Must be non-empty for `freeze`; `validate` accepts `[]` (an empty draft is schema-valid but unfrozen) |
 
 ---
 
 ## Versioning Rules
 
-- `profile_family` = stable name (e.g., `csv.loan_tape.core`)
+- `profile_family` = stable name (e.g., `csv.loan_tape.core`). Must match `^[a-z][a-z0-9]*(\.[a-z][a-z0-9_]*)*$` — lowercase dot-separated segments, each starting with a letter. Underscores allowed within segments; hyphens, spaces, and uppercase are rejected.
 - `profile_version` = integer; monotonic within family by policy
 - `profile_id` = `family.vN` (e.g., `csv.loan_tape.core.v0`)
 - **Any semantic change is breaking by definition** — if you change semantics, you changed the meaning of the profile
@@ -328,6 +431,8 @@ Report tools accept `--profile <PATH>` or `--profile-id <ID>` (mutually exclusiv
 1. Explicit `--profile <PATH>` (file path)
 2. `--profile-id <ID>` resolved via (first match wins):
    a. `~/.epistemic/profiles/` (v0.1)
+
+**Filename convention:** Frozen profiles are stored as `<profile_id>.yaml` (e.g., `csv.loan_tape.core.v0.yaml`). `list` scans resolution directories for `*.yaml` files and parses the `profile_id` field. `show` resolves by matching the requested ID against the `profile_id` field in scanned files (not by filename alone, though the convention makes scanning fast).
 
 Built-in profiles and `EPISTEMIC_PROFILE_PATH` resolution are deferred in v0.1.
 
@@ -400,20 +505,7 @@ E_EMPTY:
   { "path": "tape.csv", "reason": "no header row | no data rows" }
 ```
 
-Refusal envelope (emitted to stdout):
-
-```json
-{
-  "version": "profile.v0",
-  "outcome": "REFUSAL",
-  "refusal": {
-    "code": "E_COLUMN_NOT_FOUND",
-    "message": "Profile references columns not present in dataset",
-    "detail": { "columns": ["accrued_interest"], "available": ["loan_id", "balance", "rate"] },
-    "next_command": null
-  }
-}
-```
+Refusals are emitted inside the unified output envelope (see [Output Envelope](#output-envelope-all---json-responses)) with `outcome: "REFUSAL"` and the refusal detail in the `result` field. Without `--json`, refusals are printed as human-readable error messages to stderr with the refusal code in brackets (e.g., `[E_COLUMN_NOT_FOUND] Profile references columns not present in dataset`).
 
 ---
 
@@ -443,6 +535,8 @@ The record follows the standard `witness.v0` schema:
 
 Possible outcomes: `SUCCESS` (exit 0), `ISSUES_FOUND` (exit 1, e.g., lint), `REFUSAL` (exit 2).
 
+**Ledger location:** `~/.epistemic/witness.jsonl` — append-only, one JSON object per line. Each record's `prev` field contains the `id` of the preceding record (or `null` for the first entry), forming a hash chain. The `witness query` subcommand reads this file.
+
 Per-subcommand `params` shapes:
 
 ```
@@ -453,11 +547,31 @@ stats:       { "subcommand": "stats", "profile": "loan_tape.v0" | null }
 suggest-key: { "subcommand": "suggest-key", "top": 5 }
 ```
 
-The `output_hash` is BLAKE3 of the primary output. For artifact subcommands (`freeze`), this is the emitted file content. For report subcommands (`stats`, `suggest-key`, `lint`, `validate`), this is the stdout output. `inputs` lists the files consumed by the subcommand. For `lint`, inputs include both the profile and the dataset.
+The `output_hash` is BLAKE3 of the primary output. For artifact subcommands (`freeze`), this is the emitted file content. For report subcommands (`stats`, `suggest-key`, `lint`, `validate`), this is the JSON representation of the result (regardless of whether `--json` was passed) — this ensures the witness hash is stable and independent of output format. `inputs` lists the files consumed by the subcommand. For `lint`, inputs include both the profile and the dataset.
 
 ---
 
 ## Implementation Notes
+
+### What `draft new` emits (v0.1)
+
+A minimal, schema-valid template with placeholder values the user fills in:
+
+```yaml
+schema_version: 1
+status: draft
+format: csv
+
+key: []
+
+include_columns: []
+
+equivalence:
+  float_decimals: 6
+  trim_strings: true
+```
+
+This is valid YAML and passes `validate`, but `freeze` rejects it because `include_columns` is empty.
 
 ### What `draft init` does (v0.1)
 
@@ -468,9 +582,21 @@ The `output_hash` is BLAKE3 of the primary output. For artifact subcommands (`fr
 
 ### What `freeze` does (summary)
 
-Opens a draft, validates it, checks it isn't already frozen, validates family/version format, fills defaults, sets identity fields, canonicalizes, computes SHA256, writes the frozen file, and appends a witness record. See the detailed execution flow (steps a–j under `freeze:` in the Execution flow section) for the authoritative step-by-step with refusal codes.
+Opens a draft, validates it (including rejecting empty `include_columns`), checks it isn't already frozen, validates family/version format, fills defaults, sets identity fields, canonicalizes, computes SHA256, writes the frozen file (refusing if `--out` already exists), and appends a witness record. See the detailed execution flow (steps a–k under `freeze:` in the Execution flow section) for the authoritative step-by-step with refusal codes.
 
 Any change after freeze = new version, no exceptions.
+
+### Canonical form specification
+
+Canonicalization produces a deterministic YAML byte string for SHA256 hashing. The rules:
+
+1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `hashing`, `equivalence`, `key`, `include_columns`
+2. **Nested field order** within `hashing`: `algorithm`. Within `equivalence`: `order`, `float_decimals`, `trim_strings` (omitted fields stay omitted)
+3. **YAML style**: block style only (no flow sequences/mappings). Strings are unquoted unless they require quoting per YAML spec. Arrays use `- item` form (one item per line)
+4. **Trailing newline**: exactly one `\n` at end of file
+5. **No comments, no blank lines, no document markers (`---` / `...`)**
+
+`profile_sha256` is excluded from canonicalization (it is appended to the output file after the hash is computed). The frozen file on disk includes `profile_sha256` as the fourth field (after `profile_family`), but this field is not part of the canonical byte string.
 
 ### What `suggest-key` does
 
@@ -478,6 +604,9 @@ Ranks candidate key columns deterministically by:
 1. Uniqueness (% of distinct values / total rows)
 2. Null rate (lower is better)
 3. Stability signals (column name heuristics: `*_id`, `*_key`, `*_number`)
+4. Tiebreaker: column position in the dataset header (earlier = higher rank)
+
+**Viability threshold for `--key auto`:** A candidate is viable if uniqueness ≥ 0.95 (95% distinct) and null rate = 0.0. When no column meets this threshold, `draft init --key auto` sets `key: []` and emits a stderr warning. The threshold is not configurable in v0.1.
 
 Output is a ranked list. When `--json` is provided, output is a JSON array of `{ column, uniqueness, null_rate, rank }`.
 
@@ -485,30 +614,35 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
 
 ```
  1. Parse CLI args (clap)                → exit 2 on bad args; --version handled by clap
- 2. If --describe: print operator.json, exit 0
- 3. If --schema (when implemented): print JSON Schema, exit 0
- 4. If witness subcommand: dispatch to witness query/last/count, exit
- 5. Dispatch to subcommand handler:
+ 2. If --describe: print operator.json, exit 0 (works without subcommand since command is Option<Command>)
+ 3. If --schema (when implemented): print JSON Schema, exit 0 (also works without subcommand)
+ 4. If command is None: exit 2 (no subcommand provided and no early-exit flag matched)
+ 5. If witness subcommand: dispatch to witness query/last/count, exit
+ 6. Dispatch to subcommand handler:
 
     draft new:
       a. Build blank template for --format
       b. Write to --out                    → E_IO if write fails
-      c. Exit 0
+      c. Print output path to stdout
+      d. Exit 0
 
     draft init:
       a. Open dataset file                 → E_IO if not found or permission denied
       b. Parse dataset header              → E_CSV_PARSE if invalid, E_EMPTY if no header
       c. Build draft profile from columns
-      d. If --key auto: run suggest-key internally, set top candidate
-      e. Write to --out                    → E_IO if write fails
-      f. Exit 0
+      d. If --key auto: parse full dataset (all rows) for suggest-key → E_EMPTY if no data rows
+      e. If --key auto: run suggest-key internally, set top viable candidate (or [] if none)
+      f. Write to --out                    → E_IO if write fails
+      g. Print output path to stdout
+      h. Exit 0
 
     validate:
       a. Open profile file                 → E_IO if not found or permission denied
       b. Parse profile YAML                → E_INVALID_SCHEMA if not valid YAML
       c. Validate against schema           → E_MISSING_FIELD if required field absent; E_INVALID_SCHEMA on other failures
-      d. Report results
-      e. Exit 0 (valid) or 2 (invalid)
+      d. If status is "frozen": check frozen-only invariants (profile_id, profile_version, profile_family, profile_sha256 all present and well-formed). "Well-formed" for profile_sha256 means `sha256:` prefix + 64 lowercase hex chars — validate does NOT recompute the hash (that requires canonicalization and is a separate concern). → E_MISSING_FIELD / E_INVALID_SCHEMA
+      e. Report results
+      f. Exit 0 (valid) or 2 (invalid)
 
     lint:
       a. Validate profile (same as validate, including E_IO for file access)
@@ -521,7 +655,7 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
     stats:
       a. Open dataset file                 → E_IO if not found or permission denied
       b. Parse dataset                     → E_CSV_PARSE if invalid, E_EMPTY if no data rows
-      c. If --profile: open and parse profile YAML → E_IO / E_INVALID_SCHEMA
+      c. If --profile: open, parse, and schema-validate profile YAML (same checks as validate steps b-d) → E_IO / E_INVALID_SCHEMA / E_MISSING_FIELD
       d. If --profile: validate profile columns exist in dataset → E_COLUMN_NOT_FOUND if missing
       e. Compute column counts, null rates, uniqueness scores (scoped to profile columns if provided)
       f. Emit report (human or --json)
@@ -537,19 +671,22 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
     freeze:
       a. Open draft file                   → E_IO if not found or permission denied
       b. Parse YAML                        → E_INVALID_SCHEMA if not valid YAML
-      c. Validate against schema           → E_MISSING_FIELD if required field absent; E_INVALID_SCHEMA if wrong structure
+      c. Validate against schema           → E_MISSING_FIELD if required field absent; E_INVALID_SCHEMA if wrong structure or include_columns is empty
       d. Check not already frozen          → E_ALREADY_FROZEN
       e. Validate --family format and version integer constraints (v0.1; global monotonicity deferred) → E_BAD_VERSION if invalid
       f. Fill defaults, set identity fields (status, profile_id, version, family)
       g. Canonicalize (stable field order, all fields including identity EXCEPT profile_sha256)
       h. Compute profile_sha256 (SHA256 of canonicalized content from step g)
-      i. Write frozen profile to --out     → E_IO if write fails
-      j. Exit 0
+      i. Write frozen profile to --out     → E_IO if write fails; refuses if --out already exists (frozen profiles are immutable artifacts — use a new path or delete explicitly)
+      j. Print output path to stdout
+      k. Exit 0
 
     list:
       a. Search resolution paths (~/.epistemic/profiles/ in v0.1)
-      b. Emit list (human or --json)
-      c. Exit 0
+      b. Parse each *.yaml file, extract profile_id and profile_family
+      c. Sort by profile_family (lexicographic), then profile_version (numeric ascending)
+      d. Emit list (human or --json)
+      e. Exit 0
 
     show:
       a. Resolve profile_id to file        → E_IO if not found in any resolution path
@@ -558,8 +695,9 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
 
     diff:
       a. Resolve both profiles (paths or IDs) → E_IO if either not found
-      b. Compute structural diff
-      c. Emit diff report (human or --json)
+      b. Compute structural diff over semantic fields only: format, hashing, equivalence, key, include_columns.
+         Identity fields (profile_id, profile_version, profile_family, profile_sha256, status, schema_version) are excluded — they are metadata, not scoping semantics. This means diffing a draft against a frozen profile reports only meaningful differences.
+      c. Emit diff report (human or --json). Each difference: { field, a_value, b_value }.
       d. Exit 0 (identical) or 1 (differences found)
 
     push:
@@ -575,8 +713,8 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       b. Write to --out
       c. Exit 0 (fetched) or 2 (not found/transport error)
 
- 6. Append witness record (if applicable, if not --no-witness)
- 7. Exit
+ 7. Append witness record (if applicable, if not --no-witness). If witness append fails (E_IO on ledger file), warn on stderr but do not change the exit code — the primary operation already succeeded. The frozen file / report is the artifact; the witness is secondary.
+ 8. Exit
 ```
 
 ### Cli struct
@@ -586,7 +724,7 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 
     /// Suppress witness ledger recording
     #[arg(long, global = true)]
@@ -793,9 +931,19 @@ src/
 │   ├── ledger.rs        # Append to witness ledger
 │   ├── query.rs         # Witness query subcommands
 │   └── mod.rs
-├── lib.rs               # pub fn run() → u8 (handles errors internally, returns exit code)
+├── lib.rs               # pub fn run() → u8 (full dispatch; calls handler + output layer)
 └── main.rs              # Minimal: calls profile::run(), maps to ExitCode
 ```
+
+### Decoupled output architecture
+
+Subcommand handlers return structured data — they do not format output. The dispatch in `lib.rs` calls the handler, then passes the result to the output layer (`output::json` for `--json`, `output::human` otherwise). This means:
+
+- Subcommand beads only implement business logic in their own `.rs` files
+- The output envelope bead (`output/json.rs`, `output/human.rs`) runs in parallel with subcommand beads
+- No subcommand bead touches `lib.rs` or any `mod.rs` — the scaffold pre-creates all dispatch and module stubs
+
+Handler return type: `Result<serde_json::Value, RefusalPayload>`. On `Ok(value)`, the output layer wraps in the envelope with `outcome: SUCCESS` or `ISSUES_FOUND` (determined by exit code). On `Err(refusal)`, the output layer wraps with `outcome: REFUSAL`.
 
 ### `main.rs` (≤15 lines)
 
@@ -922,6 +1070,7 @@ fn main() -> std::process::ExitCode {
 - **Witness tests:** witness record appended for freeze/lint/validate/stats/suggest-key
 - **Canonicalization tests:** same profile content → same SHA256 regardless of field order in source YAML
 - **Exit code tests:** 0 success, 1 domain-negative, 2 refusal
+- **Envelope tests:** every `--json` subcommand returns a valid envelope; `outcome` matches exit code; `result` matches per-subcommand schema; `witness_id` populated when expected; `profile_ref` populated when a profile was consumed
 - **Golden file tests:** known CSV through `draft init` produces exact expected draft
 
 Deferred test tracks:
