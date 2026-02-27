@@ -45,7 +45,7 @@ fn emit_human_value(subcommand: &str, value: &Value) {
 }
 
 fn emit_human_refusal(refusal: &RefusalPayload) {
-    eprintln!("Error: {}", refusal.message);
+    eprintln!("Error: [{}] {}", refusal.code, refusal.message);
 
     // Show structured detail in human-readable format
     if let Ok(detail_str) = serde_json::to_string_pretty(&refusal.detail)
