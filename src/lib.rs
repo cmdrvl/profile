@@ -105,7 +105,9 @@ fn command_name(command: &Command) -> &'static str {
 
 fn handle_describe(json_output: bool) -> u8 {
     if json_output {
-        println!(r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"describe","result":{{"status":"not_implemented"}},"profile_ref":null,"witness_id":null}}"#);
+        println!(
+            r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"describe","result":{{"status":"not_implemented"}},"profile_ref":null,"witness_id":null}}"#
+        );
     } else {
         println!("--describe is wired but not yet implemented.");
     }
@@ -115,7 +117,9 @@ fn handle_describe(json_output: bool) -> u8 {
 
 fn handle_schema(json_output: bool) -> u8 {
     if json_output {
-        println!(r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"schema","result":{{"status":"not_implemented"}},"profile_ref":null,"witness_id":null}}"#);
+        println!(
+            r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"schema","result":{{"status":"not_implemented"}},"profile_ref":null,"witness_id":null}}"#
+        );
     } else {
         println!("--schema is wired but not yet implemented.");
     }
