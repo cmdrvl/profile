@@ -56,7 +56,12 @@ impl RefusalCode {
     /// Returns the suggested action for this refusal code
     pub const fn action(&self) -> &'static str {
         match self {
-            Self::InvalidSchema | Self::MissingField | Self::BadVersion | Self::CsvParse | Self::Empty | Self::ColumnNotFound => "fix_input",
+            Self::InvalidSchema
+            | Self::MissingField
+            | Self::BadVersion
+            | Self::CsvParse
+            | Self::Empty
+            | Self::ColumnNotFound => "fix_input",
             Self::AlreadyFrozen | Self::Io => "escalate",
         }
     }

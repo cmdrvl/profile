@@ -10,10 +10,10 @@ pub struct RefusalPayload {
     pub code: String,
     /// Human-readable message
     pub message: String,
-    /// Suggested action (fix_input or escalate)
-    pub action: String,
     /// Structured detail payload specific to the refusal code
     pub detail: Value,
+    /// Optional suggested remediation command
+    pub next_command: Option<String>,
 }
 
 /// Schema validation error detail
@@ -67,6 +67,7 @@ pub struct CsvParseDetail {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmptyDetail {
     pub path: String,
+    pub reason: String,
 }
 
 /// Column not found error detail
@@ -79,14 +80,13 @@ pub struct ColumnNotFoundDetail {
 impl RefusalPayload {
     /// Create a new refusal payload with the given code and detail
     pub fn new(code: RefusalCode, detail: impl Serialize) -> Self {
-        let detail = serde_json::to_value(detail)
-            .expect("detail must be serializable");
+        let detail = serde_json::to_value(detail).expect("detail must be serializable");
 
         Self {
             code: code.as_str().to_string(),
             message: code.message().to_string(),
-            action: code.action().to_string(),
             detail,
+            next_command: None,
         }
     }
 
@@ -105,57 +105,84 @@ impl RefusalPayload {
 
     /// Create a missing field refusal
     pub fn missing_field(field: impl Into<String>) -> Self {
-        Self::new(RefusalCode::MissingField, MissingFieldDetail {
-            field: field.into(),
-        })
+        Self::new(
+            RefusalCode::MissingField,
+            MissingFieldDetail {
+                field: field.into(),
+            },
+        )
     }
 
     /// Create a bad version refusal
     pub fn bad_version(family: impl Into<String>, version: u64, error: impl Into<String>) -> Self {
-        Self::new(RefusalCode::BadVersion, BadVersionDetail {
-            family: family.into(),
-            version,
-            error: error.into(),
-        })
+        Self::new(
+            RefusalCode::BadVersion,
+            BadVersionDetail {
+                family: family.into(),
+                version,
+                error: error.into(),
+            },
+        )
     }
 
     /// Create an already frozen refusal
-    pub fn already_frozen(profile_id: impl Into<String>, profile_sha256: impl Into<String>) -> Self {
-        Self::new(RefusalCode::AlreadyFrozen, AlreadyFrozenDetail {
-            profile_id: profile_id.into(),
-            profile_sha256: profile_sha256.into(),
-        })
+    pub fn already_frozen(
+        profile_id: impl Into<String>,
+        profile_sha256: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            RefusalCode::AlreadyFrozen,
+            AlreadyFrozenDetail {
+                profile_id: profile_id.into(),
+                profile_sha256: profile_sha256.into(),
+            },
+        )
     }
 
     /// Create an IO refusal
     pub fn io(path: impl Into<String>, error: impl Into<String>) -> Self {
-        Self::new(RefusalCode::Io, IoDetail {
-            path: path.into(),
-            error: error.into(),
-        })
+        Self::new(
+            RefusalCode::Io,
+            IoDetail {
+                path: path.into(),
+                error: error.into(),
+            },
+        )
     }
 
     /// Create a CSV parse refusal
     pub fn csv_parse(path: impl Into<String>, error: impl Into<String>) -> Self {
-        Self::new(RefusalCode::CsvParse, CsvParseDetail {
-            path: path.into(),
-            error: error.into(),
-        })
+        Self::new(
+            RefusalCode::CsvParse,
+            CsvParseDetail {
+                path: path.into(),
+                error: error.into(),
+            },
+        )
     }
 
     /// Create an empty dataset refusal
     pub fn empty(path: impl Into<String>) -> Self {
-        Self::new(RefusalCode::Empty, EmptyDetail {
-            path: path.into(),
-        })
+        Self::empty_with_reason(path, "no data rows")
+    }
+
+    /// Create an empty dataset refusal with explicit reason
+    pub fn empty_with_reason(path: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self::new(
+            RefusalCode::Empty,
+            EmptyDetail {
+                path: path.into(),
+                reason: reason.into(),
+            },
+        )
     }
 
     /// Create a column not found refusal
     pub fn column_not_found(columns: Vec<String>, available: Vec<String>) -> Self {
-        Self::new(RefusalCode::ColumnNotFound, ColumnNotFoundDetail {
-            columns,
-            available,
-        })
+        Self::new(
+            RefusalCode::ColumnNotFound,
+            ColumnNotFoundDetail { columns, available },
+        )
     }
 }
 
@@ -171,11 +198,18 @@ impl std::error::Error for RefusalPayload {}
 impl RefusalPayload {
     /// Create a simple refusal payload (legacy compatibility)
     pub fn simple(code: impl Into<String>, detail: impl Into<String>) -> Self {
+        let detail_str = detail.into();
         Self {
             code: code.into(),
-            message: detail.into(),
-            action: "fix_input".to_string(),
-            detail: serde_json::Value::String(detail.into()),
+            message: detail_str.clone(),
+            detail: serde_json::Value::String(detail_str),
+            next_command: None,
         }
+    }
+
+    /// Attach a suggested next command to this refusal.
+    pub fn with_next_command(mut self, next_command: impl Into<String>) -> Self {
+        self.next_command = Some(next_command.into());
+        self
     }
 }

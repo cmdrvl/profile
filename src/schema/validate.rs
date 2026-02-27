@@ -13,15 +13,15 @@ pub fn parse_profile_yaml(content: &str) -> Result<Profile, RefusalPayload> {
 
 pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), RefusalPayload> {
     if profile.schema_version != 1 {
-        return Err(invalid_schema("schema_version must be 1"));
+        return Err(invalid_schema("schema_version", "must be 1"));
     }
 
     if !matches!(profile.format, crate::schema::ProfileFormat::Csv) {
-        return Err(invalid_schema("format must be csv"));
+        return Err(invalid_schema("format", "must be csv"));
     }
 
     if profile.key.iter().any(|column| column.trim().is_empty()) {
-        return Err(invalid_schema("key columns must be non-empty strings"));
+        return Err(invalid_schema("key", "columns must be non-empty strings"));
     }
 
     if profile
@@ -30,13 +30,15 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
         .any(|column| column.trim().is_empty())
     {
         return Err(invalid_schema(
-            "include_columns entries must be non-empty strings",
+            "include_columns",
+            "entries must be non-empty strings",
         ));
     }
 
     if matches!(mode, ValidationMode::Freeze) && profile.include_columns.is_empty() {
         return Err(invalid_schema(
-            "include_columns must be non-empty for freeze",
+            "include_columns",
+            "must be non-empty for freeze",
         ));
     }
 
@@ -59,6 +61,7 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
 
         if !is_valid_profile_family(family) {
             return Err(invalid_schema(
+                "profile_family",
                 "profile_family is not in valid family format",
             ));
         }
@@ -66,12 +69,14 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
         let expected_id = format!("{family}.v{version}");
         if profile_id != expected_id {
             return Err(invalid_schema(
+                "profile_id",
                 "profile_id must equal <profile_family>.v<profile_version>",
             ));
         }
 
         if !is_valid_profile_sha256(sha) {
             return Err(invalid_schema(
+                "profile_sha256",
                 "profile_sha256 must match sha256:<64 lowercase hex chars>",
             ));
         }
@@ -84,6 +89,7 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
             || profile.profile_sha256.is_some())
     {
         return Err(invalid_schema(
+            "status",
             "draft profile must not set frozen-only identity fields",
         ));
     }
@@ -91,7 +97,7 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
     if let Some(hashing) = profile.hashing
         && !matches!(hashing.algorithm, HashAlgorithm::Sha256)
     {
-        return Err(invalid_schema("hashing.algorithm must be sha256"));
+        return Err(invalid_schema("hashing.algorithm", "must be sha256"));
     }
 
     Ok(())
@@ -147,7 +153,7 @@ fn map_yaml_error(error: serde_yaml::Error) -> RefusalPayload {
         return missing_field(field);
     }
 
-    invalid_schema(format!("invalid profile YAML: {message}"))
+    invalid_schema("yaml", format!("invalid profile YAML: {message}"))
 }
 
 fn extract_missing_field(message: &str) -> Option<&str> {
@@ -157,15 +163,9 @@ fn extract_missing_field(message: &str) -> Option<&str> {
 }
 
 fn missing_field(field: &str) -> RefusalPayload {
-    RefusalPayload {
-        code: "E_MISSING_FIELD".to_string(),
-        detail: field.to_string(),
-    }
+    RefusalPayload::missing_field(field)
 }
 
-fn invalid_schema(detail: impl Into<String>) -> RefusalPayload {
-    RefusalPayload {
-        code: "E_INVALID_SCHEMA".to_string(),
-        detail: detail.into(),
-    }
+fn invalid_schema(field: impl Into<String>, error: impl Into<String>) -> RefusalPayload {
+    RefusalPayload::invalid_schema_single(field, error)
 }

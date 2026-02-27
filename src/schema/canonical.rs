@@ -44,9 +44,11 @@ pub fn canonical_yaml(profile: &Profile) -> Result<String, RefusalPayload> {
     validate_profile(profile, ValidationMode::Freeze)?;
 
     let canonical = CanonicalProfile::from(profile);
-    let serialized = serde_yaml::to_string(&canonical).map_err(|error| RefusalPayload {
-        code: "E_INVALID_SCHEMA".to_string(),
-        detail: format!("failed to canonicalize profile: {error}"),
+    let serialized = serde_yaml::to_string(&canonical).map_err(|error| {
+        RefusalPayload::invalid_schema_single(
+            "canonicalization",
+            format!("failed to canonicalize profile: {error}"),
+        )
     })?;
 
     Ok(normalize_yaml(serialized))
@@ -74,7 +76,7 @@ impl<'a> From<&'a Profile> for CanonicalProfile<'a> {
             format: profile.format,
             hashing: profile.hashing.as_ref().map(CanonicalHashing::from),
             equivalence: profile.equivalence.as_ref().map(CanonicalEquivalence::from),
-            key: (!profile.key.is_empty()).then_some(profile.key.as_slice()),
+            key: Some(profile.key.as_slice()),
             include_columns: &profile.include_columns,
         }
     }

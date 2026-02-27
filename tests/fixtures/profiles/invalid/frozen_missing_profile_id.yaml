@@ -1,0 +1,17 @@
+schema_version: 1
+profile_version: 0
+profile_family: csv.loan_tape.core
+profile_sha256: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+status: frozen
+format: csv
+hashing:
+  algorithm: sha256
+equivalence:
+  order: order-invariant
+  float_decimals: 6
+  trim_strings: true
+key:
+  - loan_id
+include_columns:
+  - loan_id
+  - balance
