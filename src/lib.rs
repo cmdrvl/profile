@@ -104,15 +104,40 @@ fn command_name(command: &Command) -> &'static str {
 }
 
 fn handle_describe(json_output: bool) -> u8 {
-    if json_output {
-        println!(
-            r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"describe","result":{{"status":"not_implemented"}},"profile_ref":null,"witness_id":null}}"#
-        );
-    } else {
-        println!("--describe is wired but not yet implemented.");
+    match std::fs::read_to_string("operator.json") {
+        Ok(content) => {
+            if json_output {
+                // Parse the operator.json and embed it in the envelope
+                match serde_json::from_str::<Value>(&content) {
+                    Ok(operator_data) => {
+                        println!(
+                            r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"describe","result":{},"profile_ref":null,"witness_id":null}}"#,
+                            operator_data
+                        );
+                    }
+                    Err(_) => {
+                        println!(
+                            r#"{{"version":"profile.v0","outcome":"REFUSAL","exit_code":2,"subcommand":"describe","result":{{"code":"E_IO","message":"Invalid operator.json format"}},"profile_ref":null,"witness_id":null}}"#
+                        );
+                        return EXIT_REFUSAL;
+                    }
+                }
+            } else {
+                println!("{}", content);
+            }
+            EXIT_SUCCESS
+        }
+        Err(_) => {
+            if json_output {
+                println!(
+                    r#"{{"version":"profile.v0","outcome":"REFUSAL","exit_code":2,"subcommand":"describe","result":{{"code":"E_IO","message":"Failed to read operator.json"}},"profile_ref":null,"witness_id":null}}"#
+                );
+            } else {
+                eprintln!("Failed to read operator.json");
+            }
+            EXIT_REFUSAL
+        }
     }
-
-    EXIT_SUCCESS
 }
 
 fn handle_schema(json_output: bool) -> u8 {

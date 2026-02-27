@@ -1,10 +1,12 @@
-// Profile schema model + parser will be implemented by bd-er7
-// This placeholder allows cargo check to pass
+pub mod canonical;
+pub mod profile;
+pub mod validate;
 
-pub struct Profile;
-
-impl Profile {
-    pub fn from_yaml(_content: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        todo!("Profile schema model + parser (bd-er7)")
-    }
-}
+pub use canonical::{canonical_yaml, compute_profile_sha256};
+pub use profile::{
+    Equivalence, EquivalenceOrder, HashAlgorithm, Hashing, Profile, ProfileFormat, ProfileStatus,
+};
+pub use validate::{
+    ValidationMode, is_valid_profile_family, is_valid_profile_sha256, parse_profile_yaml,
+    validate_profile,
+};

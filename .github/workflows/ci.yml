@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality-gate:
+    name: Quality Gate (${{ matrix.os }}, ${{ matrix.toolchain }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Intentionally scoped for runtime budget in early-stage repo.
+        os: [ubuntu-latest]
+        toolchain: [stable]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting check
+        run: cargo fmt --check
+
+      - name: Type check
+        run: cargo check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test suite
+        run: cargo test
+
+      - name: Local reproduction commands
+        if: failure()
+        run: |
+          echo "CI failed. Reproduce locally with:"
+          echo "cargo fmt --check"
+          echo "cargo check"
+          echo "cargo clippy --all-targets -- -D warnings"
+          echo "cargo test"
+          {
+            echo "### Local reproduction"
+            echo '```bash'
+            echo "cargo fmt --check"
+            echo "cargo check"
+            echo "cargo clippy --all-targets -- -D warnings"
+            echo "cargo test"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
