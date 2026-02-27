@@ -1,0 +1,61 @@
+{
+  "schema_version": "operator.v0",
+  "name": "profile",
+  "version": "0.1.0",
+  "description": "Creates, validates, and freezes column-scoping profiles for report tools",
+  "repository": "https://github.com/cmdrvl/profile",
+  "license": "MIT",
+
+  "invocation": {
+    "binary": "profile",
+    "output_mode": "mixed",
+    "output_schema": "profile.v0",
+    "json_flag": "--json"
+  },
+
+  "arguments": [],
+
+  "options": [],
+
+  "subcommands": [
+    { "name": "draft new", "description": "Create blank draft template" },
+    { "name": "draft init", "description": "Create draft from dataset header" },
+    { "name": "validate", "description": "Validate profile against schema" },
+    { "name": "lint", "description": "Validate + check against dataset" },
+    { "name": "stats", "description": "Deterministic structural stats" },
+    { "name": "suggest-key", "description": "Rank candidate key columns" },
+    { "name": "freeze", "description": "Freeze draft into immutable profile" },
+    { "name": "list", "description": "List available frozen profiles" },
+    { "name": "show", "description": "Show resolved profile" },
+    { "name": "diff", "description": "Diff two profile versions" },
+    { "name": "witness", "description": "Query the witness ledger" }
+  ],
+
+  "exit_codes": {
+    "0": { "meaning": "SUCCESS", "domain": "positive" },
+    "1": { "meaning": "ISSUES_FOUND", "domain": "negative" },
+    "2": { "meaning": "REFUSAL", "domain": "error" }
+  },
+
+  "refusals": [
+    { "code": "E_INVALID_SCHEMA", "message": "Profile fails schema validation", "action": "fix_input" },
+    { "code": "E_MISSING_FIELD", "message": "Required field not declared", "action": "fix_input" },
+    { "code": "E_BAD_VERSION", "message": "Family/version syntax or integer constraints failed", "action": "fix_input" },
+    { "code": "E_ALREADY_FROZEN", "message": "Profile already frozen", "action": "escalate" },
+    { "code": "E_IO", "message": "Can't read/write file", "action": "escalate" },
+    { "code": "E_CSV_PARSE", "message": "Can't parse dataset", "action": "fix_input" },
+    { "code": "E_EMPTY", "message": "Dataset missing header or data rows required for operation", "action": "fix_input" },
+    { "code": "E_COLUMN_NOT_FOUND", "message": "Column not found in dataset", "action": "fix_input" }
+  ],
+
+  "capabilities": {
+    "formats": ["csv"],
+    "profile_aware": false,
+    "streaming": false
+  },
+
+  "pipeline": {
+    "upstream": [],
+    "downstream": ["rvl", "compare", "shape"]
+  }
+}

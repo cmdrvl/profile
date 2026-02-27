@@ -17,11 +17,11 @@ brew install cmdrvl/tap/profile
 
 ---
 
-## TL;DR
+## What / Why / How
 
-**The Problem**: Report tools like `shape` and `rvl` analyze every column by default. For a loan tape with 200 columns, you only care about 15. Teams maintain ad-hoc column lists in spreadsheets, pass fragile `--key` flags, and have no way to version, validate, or share column-scoping decisions.
-
-**The Solution**: A profile is a versioned YAML file that declares which columns to include, what the key column is, and how to normalize values for comparison. Profile files are validated, frozen with a content hash, and consumed by all report tools via `--profile`.
+- **What:** `profile` creates YAML profiles that define column scope, keys, and normalization for report tools.
+- **Why:** It replaces ad-hoc column lists and one-off CLI flags with versioned, deterministic, reusable config.
+- **How:** Draft from real data, validate/lint, freeze to immutable+hashable, then pass `--profile` to `shape`/`rvl`/`compare`.
 
 ### Why Use profile?
 
@@ -37,44 +37,48 @@ brew install cmdrvl/tap/profile
 
 ---
 
-## Quick Example
+## 5-Minute Quickstart (Copy/Paste)
 
 ```bash
-# Step 1: Draft a profile from a dataset header
-$ profile draft init loan_tape.csv --out loan_profile.yaml
+# 1) Create a draft profile from a real dataset
+profile draft init loan_tape.csv --out loan_tape.draft.yaml
+
+# 2) Validate schema and lint against the dataset
+profile validate loan_tape.draft.yaml
+profile lint loan_tape.draft.yaml --against loan_tape.csv
+
+# 3) Freeze to an immutable profile
+profile freeze loan_tape.draft.yaml \
+  --family csv.loan_tape.core \
+  --version 0 \
+  --out profiles/csv.loan_tape.core.v0.yaml
+
+# 4) Use the frozen profile in report tools
+shape old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
+rvl old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
+compare old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
 ```
 
-```yaml
-profile_id: "loan_tape.draft.v0"
-profile_version: 0
-include_columns:
-  - loan_id
-  - balance
-  - rate
-  - maturity_date
-  - property_type
-key: ["loan_id"]
-equivalence:
-  order: "order-invariant"
-  float_decimals: 6
-  trim_strings: true
-```
+---
+
+## Draft → Frozen Workflow (With Expected Output)
 
 ```bash
-# Step 2: Validate against the dataset
-$ profile lint loan_profile.yaml --against loan_tape.csv
-# exit 0 — all columns found, key is unique
+profile draft init loan_tape.csv --out loan_tape.draft.yaml
+# writes: loan_tape.draft.yaml
 
-# Step 3: Freeze the profile (immutable)
-$ profile freeze loan_profile.yaml
-# profile_sha256: "sha256:a1b2c3d4..."
+profile lint loan_tape.draft.yaml --against loan_tape.csv
+# exit 0 (or exit 1 with deterministic lint issues)
 
-# Step 4: Use with report tools
-$ shape old.csv new.csv --profile loan_profile.yaml --json
-$ rvl old.csv new.csv --profile loan_profile.yaml --json
+profile freeze loan_tape.draft.yaml \
+  --family csv.loan_tape.core \
+  --version 0 \
+  --out profiles/csv.loan_tape.core.v0.yaml
+# writes: profiles/csv.loan_tape.core.v0.yaml
+# frozen profile includes: profile_id, profile_family, profile_version, profile_sha256
 ```
 
-One profile scopes all downstream analysis. Versioned, validated, frozen.
+A draft is cheap to iterate. A frozen profile is immutable and hashable for reproducible downstream analysis.
 
 ---
 
@@ -203,7 +207,10 @@ profile stats loan_tape.csv
 Validate and mark a profile immutable with SHA-256 content hash:
 
 ```bash
-profile freeze loan_profile.yaml
+profile freeze loan_profile.yaml \
+  --family csv.loan_tape.core \
+  --version 0 \
+  --out profiles/csv.loan_tape.core.v0.yaml
 ```
 
 ---
@@ -278,6 +285,41 @@ compare old.csv new.csv --profile loan_profile.yaml --json
 
 ---
 
+## Operational Contract
+
+### Global flags
+
+| Flag | Behavior |
+|------|----------|
+| `--describe` | Print `operator.json` and exit `0` before normal input validation |
+| `--schema` | Print profile JSON Schema and exit `0` before normal input validation (deferred in v0.1) |
+| `--version` | Print `profile <semver>` and exit `0` |
+| `--no-witness` | Suppress witness ledger recording |
+
+### Exit codes
+
+| Exit | Meaning | When |
+|------|---------|------|
+| `0` | `SUCCESS` | Operation completed with no issues |
+| `1` | `ISSUES_FOUND` | Lint/diff found issues or differences |
+| `2` | `REFUSAL` | Invalid input, schema violation, parse/IO refusal, or CLI error |
+
+### Refusal codes
+
+`E_INVALID_SCHEMA`, `E_MISSING_FIELD`, `E_BAD_VERSION`, `E_ALREADY_FROZEN`, `E_IO`, `E_CSV_PARSE`, `E_EMPTY`, `E_COLUMN_NOT_FOUND`
+
+With `--json`, refusals are emitted in the unified output envelope (`outcome=REFUSAL`, refusal detail in `result`). Without `--json`, refusals are human-readable errors on stderr with the refusal code.
+
+### Witness behavior
+
+- Witness append is enabled for: `freeze`, `validate`, `lint`, `stats`, `suggest-key`
+- Witness append is skipped for: `draft new`, `draft init`, `list`, `show`, `diff`, `push`, `pull`
+- `--no-witness` disables witness writes without changing domain outcome or exit semantics
+- Ledger path: `~/.epistemic/witness.jsonl`
+- Witness append failures warn on stderr and do not change primary command outcome/exit code
+
+---
+
 ## Troubleshooting
 
 ### "Column not found" when using profile with shape/rvl
@@ -331,7 +373,7 @@ Ensure the profile file is committed and the path is correct. Profiles are plain
 | **Single key type** | Composite keys supported, but only column-based — no expression keys |
 | **No auto-update** | Profile doesn't auto-detect schema changes — use `lint` to catch drift |
 | **No profile registry** | Profiles are local files — centralized registry is deferred |
-| **No profile diffing** | Can't diff two profile versions — manual comparison only |
+| **Network publish deferred** | `push`/`pull` data-fabric wrappers are deferred in v0.1 |
 | **Pre-release** | Implementation in progress — spec is complete in the epistemic spine plan |
 
 ---

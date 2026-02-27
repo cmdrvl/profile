@@ -1,0 +1,17 @@
+use serde_json::Value;
+
+use crate::cli::exit::{EXIT_SUCCESS, EXIT_REFUSAL};
+use crate::refusal::RefusalPayload;
+
+pub fn emit(_subcommand: &str, result: Result<Value, RefusalPayload>) -> u8 {
+    match result {
+        Ok(value) => {
+            println!("{}", value);
+            EXIT_SUCCESS
+        }
+        Err(refusal) => {
+            eprintln!("Error: {}", refusal);
+            EXIT_REFUSAL
+        }
+    }
+}
