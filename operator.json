@@ -28,6 +28,8 @@
     { "name": "list", "description": "List available frozen profiles" },
     { "name": "show", "description": "Show resolved profile" },
     { "name": "diff", "description": "Diff two profile versions" },
+    { "name": "push", "description": "Publish a frozen profile to data-fabric (deferred in v0.1)" },
+    { "name": "pull", "description": "Fetch a frozen profile by ID from data-fabric (deferred in v0.1)" },
     { "name": "witness", "description": "Query the witness ledger" }
   ],
 

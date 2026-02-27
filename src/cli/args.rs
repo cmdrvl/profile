@@ -37,6 +37,8 @@ pub enum Command {
     List(ListArgs),
     Show(ShowArgs),
     Diff(DiffArgs),
+    Push(PushArgs),
+    Pull(PullArgs),
     Witness(WitnessArgs),
 }
 
@@ -135,6 +137,19 @@ pub struct ShowArgs {
 pub struct DiffArgs {
     pub a: String,
     pub b: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct PushArgs {
+    pub file: PathBuf,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct PullArgs {
+    pub profile_id: String,
+
+    #[arg(long)]
+    pub out: PathBuf,
 }
 
 #[derive(Debug, Clone, Args)]

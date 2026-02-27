@@ -1,16 +1,18 @@
-use assert_cmd::{assert::Assert, Command};
+#![allow(dead_code)]
+
+use assert_cmd::{Command, assert::Assert};
 use predicates::prelude::predicate;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 pub const EXIT_SUCCESS: i32 = 0;
 pub const EXIT_ISSUES_FOUND: i32 = 1;
 pub const EXIT_REFUSAL: i32 = 2;
 
 pub fn profile_cmd() -> Command {
-    Command::cargo_bin("profile").expect("profile binary should be available for integration tests")
+    Command::new(env!("CARGO_BIN_EXE_profile"))
 }
 
 pub fn fixture_path(relative: &str) -> PathBuf {
@@ -61,30 +63,38 @@ pub fn assert_stdout_contains(assert: Assert, needle: &str) -> Assert {
     assert.stdout(predicate::str::contains(needle))
 }
 
+#[allow(unused_macros)]
 macro_rules! assert_exit_code {
     ($assert:expr, $code:expr) => {{
         $assert.code($code);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_exit_code;
 
+#[allow(unused_macros)]
 macro_rules! assert_success_exit {
     ($assert:expr) => {{
         $assert.code($crate::common::EXIT_SUCCESS);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_success_exit;
 
+#[allow(unused_macros)]
 macro_rules! assert_issues_exit {
     ($assert:expr) => {{
         $assert.code($crate::common::EXIT_ISSUES_FOUND);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_issues_exit;
 
+#[allow(unused_macros)]
 macro_rules! assert_refusal_exit {
     ($assert:expr) => {{
         $assert.code($crate::common::EXIT_REFUSAL);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_refusal_exit;

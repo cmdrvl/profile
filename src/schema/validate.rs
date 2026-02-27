@@ -54,10 +54,6 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
             .profile_id
             .as_deref()
             .ok_or_else(|| missing_field("profile_id"))?;
-        let sha = profile
-            .profile_sha256
-            .as_deref()
-            .ok_or_else(|| missing_field("profile_sha256"))?;
 
         if !is_valid_profile_family(family) {
             return Err(invalid_schema(
@@ -74,7 +70,19 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
             ));
         }
 
-        if !is_valid_profile_sha256(sha) {
+        let profile_sha256 = profile.profile_sha256.as_deref();
+        if matches!(mode, ValidationMode::Validate) {
+            let sha = profile_sha256.ok_or_else(|| missing_field("profile_sha256"))?;
+
+            if !is_valid_profile_sha256(sha) {
+                return Err(invalid_schema(
+                    "profile_sha256",
+                    "profile_sha256 must match sha256:<64 lowercase hex chars>",
+                ));
+            }
+        } else if let Some(sha) = profile_sha256
+            && !is_valid_profile_sha256(sha)
+        {
             return Err(invalid_schema(
                 "profile_sha256",
                 "profile_sha256 must match sha256:<64 lowercase hex chars>",

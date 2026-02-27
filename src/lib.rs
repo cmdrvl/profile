@@ -12,6 +12,7 @@ pub mod diff;
 pub mod draft;
 pub mod freeze;
 pub mod lint;
+pub mod network;
 pub mod output;
 pub mod refusal;
 pub mod resolve;
@@ -73,6 +74,8 @@ fn dispatch(command: &Command, no_witness: bool) -> HandlerResult {
         Command::List(args) => resolve::list::run(args, no_witness),
         Command::Show(args) => resolve::show::run(args, no_witness),
         Command::Diff(args) => diff::diff::run(args, no_witness),
+        Command::Push(args) => network::push::run(args, no_witness),
+        Command::Pull(args) => network::pull::run(args, no_witness),
         Command::Witness(WitnessArgs { command }) => match command {
             WitnessCommand::Query(args) => witness::query::run_query(args),
             WitnessCommand::Last(args) => witness::query::run_last(args),
@@ -95,6 +98,8 @@ fn command_name(command: &Command) -> &'static str {
         Command::List(_) => "list",
         Command::Show(_) => "show",
         Command::Diff(_) => "diff",
+        Command::Push(_) => "push",
+        Command::Pull(_) => "pull",
         Command::Witness(WitnessArgs { command }) => match command {
             WitnessCommand::Query(_) => "witness query",
             WitnessCommand::Last(_) => "witness last",
@@ -141,12 +146,21 @@ fn handle_describe(json_output: bool) -> u8 {
 }
 
 fn handle_schema(json_output: bool) -> u8 {
+    let schema = output::generate_profile_schema();
+
     if json_output {
-        println!(
-            r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"schema","result":{{"status":"not_implemented"}},"profile_ref":null,"witness_id":null}}"#
-        );
+        let envelope = serde_json::json!({
+            "version": "profile.v0",
+            "outcome": "SUCCESS",
+            "exit_code": 0,
+            "subcommand": "schema",
+            "result": schema,
+            "profile_ref": null,
+            "witness_id": null
+        });
+        println!("{}", envelope);
     } else {
-        println!("--schema is wired but not yet implemented.");
+        println!("{}", serde_json::to_string_pretty(&schema).unwrap());
     }
 
     EXIT_SUCCESS
