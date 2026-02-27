@@ -1,16 +1,25 @@
-// Refusal system + codes will be implemented by bd-1r7
-// This placeholder allows cargo check to pass
+//! Refusal system and error codes
+//!
+//! This module implements the complete refusal system for the profile CLI,
+//! including all 8 refusal codes and their structured detail payloads.
 
-#[derive(Debug)]
-pub struct RefusalPayload {
-    pub code: String,
-    pub detail: String,
-}
+pub mod codes;
+pub mod payload;
 
-impl std::fmt::Display for RefusalPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.code, self.detail)
-    }
-}
+// Re-export key types
+pub use codes::RefusalCode;
+pub use payload::{
+    RefusalPayload,
+    InvalidSchemaDetail,
+    MissingFieldDetail,
+    BadVersionDetail,
+    AlreadyFrozenDetail,
+    IoDetail,
+    CsvParseDetail,
+    EmptyDetail,
+    ColumnNotFoundDetail,
+    FieldError,
+};
 
-impl std::error::Error for RefusalPayload {}
+// Convenience re-exports for common constructors
+pub use payload::RefusalPayload as RefusalPayload;

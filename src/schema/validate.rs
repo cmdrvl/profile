@@ -20,6 +20,20 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
         return Err(invalid_schema("format must be csv"));
     }
 
+    if profile.key.iter().any(|column| column.trim().is_empty()) {
+        return Err(invalid_schema("key columns must be non-empty strings"));
+    }
+
+    if profile
+        .include_columns
+        .iter()
+        .any(|column| column.trim().is_empty())
+    {
+        return Err(invalid_schema(
+            "include_columns entries must be non-empty strings",
+        ));
+    }
+
     if matches!(mode, ValidationMode::Freeze) && profile.include_columns.is_empty() {
         return Err(invalid_schema(
             "include_columns must be non-empty for freeze",
@@ -62,15 +76,12 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
             ));
         }
 
-        if matches!(profile.frozen, Some(false)) {
-            return Err(invalid_schema("frozen must be true when status is frozen"));
-        }
+        // Status is already validated to be frozen if we get here
     } else if matches!(profile.status, ProfileStatus::Draft)
         && (profile.profile_id.is_some()
             || profile.profile_version.is_some()
             || profile.profile_family.is_some()
-            || profile.profile_sha256.is_some()
-            || matches!(profile.frozen, Some(true)))
+            || profile.profile_sha256.is_some())
     {
         return Err(invalid_schema(
             "draft profile must not set frozen-only identity fields",

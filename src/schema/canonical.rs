@@ -3,6 +3,7 @@ use sha2::{Digest, Sha256};
 
 use crate::refusal::RefusalPayload;
 use crate::schema::profile::{Equivalence, Hashing, Profile, ProfileFormat, ProfileStatus};
+use crate::schema::validate::{ValidationMode, validate_profile};
 
 #[derive(Debug, Clone, Serialize)]
 struct CanonicalProfile<'a> {
@@ -19,7 +20,8 @@ struct CanonicalProfile<'a> {
     hashing: Option<CanonicalHashing<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     equivalence: Option<CanonicalEquivalence>,
-    key: &'a [String],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key: Option<&'a [String]>,
     include_columns: &'a [String],
 }
 
@@ -39,6 +41,8 @@ struct CanonicalEquivalence {
 }
 
 pub fn canonical_yaml(profile: &Profile) -> Result<String, RefusalPayload> {
+    validate_profile(profile, ValidationMode::Freeze)?;
+
     let canonical = CanonicalProfile::from(profile);
     let serialized = serde_yaml::to_string(&canonical).map_err(|error| RefusalPayload {
         code: "E_INVALID_SCHEMA".to_string(),
@@ -46,6 +50,10 @@ pub fn canonical_yaml(profile: &Profile) -> Result<String, RefusalPayload> {
     })?;
 
     Ok(normalize_yaml(serialized))
+}
+
+pub fn canonical_bytes(profile: &Profile) -> Result<Vec<u8>, RefusalPayload> {
+    Ok(canonical_yaml(profile)?.into_bytes())
 }
 
 pub fn compute_profile_sha256(canonical_yaml: &str) -> String {
@@ -66,7 +74,7 @@ impl<'a> From<&'a Profile> for CanonicalProfile<'a> {
             format: profile.format,
             hashing: profile.hashing.as_ref().map(CanonicalHashing::from),
             equivalence: profile.equivalence.as_ref().map(CanonicalEquivalence::from),
-            key: &profile.key,
+            key: (!profile.key.is_empty()).then_some(profile.key.as_slice()),
             include_columns: &profile.include_columns,
         }
     }

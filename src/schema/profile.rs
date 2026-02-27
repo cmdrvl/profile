@@ -94,6 +94,9 @@ pub struct Profile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_sha256: Option<String>,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frozen: Option<bool>,
+
     pub status: ProfileStatus,
     pub format: ProfileFormat,
 
