@@ -401,6 +401,12 @@ Yes. `profile draft init` generates a starting profile from a CSV header. You ca
 
 ---
 
+## Agent Integration
+
+For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md). Run `profile --describe` for this tool's machine-readable contract.
+
+---
+
 ## Spec and Development
 
 The profile specification is part of the [epistemic spine plan](https://github.com/cmdrvl/cmdrvl-context). This README covers intended behavior; implementation is in progress.
