@@ -5,9 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/cmdrvl/profile)](https://github.com/cmdrvl/profile/releases)
 
-**Column scoping and structural metadata — defining which columns to include, key alignment, and normalization rules for report tools like `rvl`, `shape`, and `compare`.**
-
-No AI. No inference. Pure deterministic configuration and validation.
+**Stop passing column lists on the command line. Freeze your domain knowledge into a versioned, validated, tamper-evident config.**
 
 ```bash
 brew install cmdrvl/tap/profile
@@ -17,23 +15,16 @@ brew install cmdrvl/tap/profile
 
 ---
 
-## What / Why / How
+Your dataset has 42 columns. 15 of them matter for this analysis. The key is `loan_id`. Float precision is 6 decimal places. Order doesn't matter. Where does this knowledge live? In a Slack thread? In someone's head? In a `--exclude` flag you'll forget next month?
 
-- **What:** `profile` creates YAML profiles that define column scope, keys, and normalization for report tools.
-- **Why:** It replaces ad-hoc column lists and one-off CLI flags with versioned, deterministic, reusable config.
-- **How:** Draft from real data, validate/lint, freeze to immutable+hashable, then pass `--profile` to `shape`/`rvl`/`compare`.
+**profile captures all of it in a versioned YAML file that every report tool consumes.** Draft one from a real CSV header, iterate until it's right, then freeze it — immutable, SHA-256 hashed, recorded in every lockfile and report that uses it. Change a column? New version. Full audit trail.
 
-### Why Use profile?
+### What makes this different
 
-| Feature | What It Does |
-|---------|--------------|
-| **Column scoping** | Declare which columns matter — report tools only analyze `include_columns` |
-| **Key declaration** | Specify the join/alignment key — no more guessing which column is the identifier |
-| **Normalization rules** | Float precision, string trimming, order invariance — consistent across tools |
-| **Versioned & frozen** | Each profile has a version and SHA-256 content hash — immutable once frozen |
-| **Drafting workflow** | `profile draft init` reads a CSV header and generates a starting profile |
-| **Validation** | `profile lint` catches schema drift between profile and dataset |
-| **Tool-agnostic** | One profile consumed by `shape`, `rvl`, `compare`, and `lock` |
+- **Draft → freeze lifecycle** — `profile draft init` reads a CSV header and generates a starting profile. Edit it. Lint it against real data. When it's right, `profile freeze` makes it immutable and content-addressed.
+- **Key intelligence** — `profile suggest-key` ranks candidate key columns by uniqueness, null rate, and type. No guessing.
+- **One file, all tools** — the same frozen profile is consumed by `shape`, `rvl`, `compare`, and `lock`. Declare your scoping once.
+- **Schema drift detection** — `profile lint --against data.csv` catches columns that disappeared, keys that aren't unique, and types that shifted.
 
 ---
 
