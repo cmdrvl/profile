@@ -33,7 +33,7 @@ impl ColumnAccumulator {
     }
 }
 
-pub fn run(args: &StatsArgs, no_witness: bool) -> Result<Value, RefusalPayload> {
+pub fn run(args: &StatsArgs, no_witness: bool, explicit: bool) -> Result<Value, RefusalPayload> {
     let file = File::open(&args.dataset).map_err(|error| {
         RefusalPayload::io(args.dataset.display().to_string(), error.to_string())
     })?;
@@ -76,13 +76,18 @@ pub fn run(args: &StatsArgs, no_witness: bool) -> Result<Value, RefusalPayload> 
             let uniqueness = accumulator.values.len() as f64 / row_count as f64;
             let key_viable = null_rate == 0.0 && uniqueness >= KEY_VIABLE_UNIQUENESS_THRESHOLD;
 
-            json!({
+            let mut col = json!({
                 "name": name,
                 "null_rate": null_rate,
                 "uniqueness": uniqueness,
                 "key_viable": key_viable,
-                "example": accumulator.example.clone().unwrap_or_default()
-            })
+            });
+
+            if explicit {
+                col["example"] = json!(accumulator.example.clone().unwrap_or_default());
+            }
+
+            col
         })
         .collect::<Vec<_>>();
 

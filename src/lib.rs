@@ -50,7 +50,7 @@ pub fn run() -> u8 {
         return EXIT_REFUSAL;
     };
 
-    let result = dispatch(command, cli.no_witness);
+    let result = dispatch(command, cli.no_witness, cli.explicit);
     let subcommand = command_name(command);
 
     if cli.json {
@@ -60,7 +60,7 @@ pub fn run() -> u8 {
     }
 }
 
-fn dispatch(command: &Command, no_witness: bool) -> HandlerResult {
+fn dispatch(command: &Command, no_witness: bool, explicit: bool) -> HandlerResult {
     match command {
         Command::Draft(DraftArgs { command }) => match command {
             DraftCommand::New(args) => draft::new::run(args, no_witness),
@@ -68,7 +68,7 @@ fn dispatch(command: &Command, no_witness: bool) -> HandlerResult {
         },
         Command::Validate(args) => lint::validate::run(args, no_witness),
         Command::Lint(args) => lint::lint::run(args, no_witness),
-        Command::Stats(args) => stats::stats::run(args, no_witness),
+        Command::Stats(args) => stats::stats::run(args, no_witness, explicit),
         Command::SuggestKey(args) => stats::suggest_key::run(args, no_witness),
         Command::Freeze(args) => freeze::freeze::run(args, no_witness),
         Command::List(args) => resolve::list::run(args, no_witness),
@@ -109,40 +109,27 @@ fn command_name(command: &Command) -> &'static str {
 }
 
 fn handle_describe(json_output: bool) -> u8 {
-    match std::fs::read_to_string("operator.json") {
-        Ok(content) => {
-            if json_output {
-                // Parse the operator.json and embed it in the envelope
-                match serde_json::from_str::<Value>(&content) {
-                    Ok(operator_data) => {
-                        println!(
-                            r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"describe","result":{},"profile_ref":null,"witness_id":null}}"#,
-                            operator_data
-                        );
-                    }
-                    Err(_) => {
-                        println!(
-                            r#"{{"version":"profile.v0","outcome":"REFUSAL","exit_code":2,"subcommand":"describe","result":{{"code":"E_IO","message":"Invalid operator.json format"}},"profile_ref":null,"witness_id":null}}"#
-                        );
-                        return EXIT_REFUSAL;
-                    }
-                }
-            } else {
-                println!("{}", content);
-            }
-            EXIT_SUCCESS
-        }
-        Err(_) => {
-            if json_output {
+    const OPERATOR_JSON: &str = include_str!("../operator.json");
+
+    if json_output {
+        match serde_json::from_str::<Value>(OPERATOR_JSON) {
+            Ok(operator_data) => {
                 println!(
-                    r#"{{"version":"profile.v0","outcome":"REFUSAL","exit_code":2,"subcommand":"describe","result":{{"code":"E_IO","message":"Failed to read operator.json"}},"profile_ref":null,"witness_id":null}}"#
+                    r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"describe","result":{},"profile_ref":null,"witness_id":null}}"#,
+                    operator_data
                 );
-            } else {
-                eprintln!("Failed to read operator.json");
             }
-            EXIT_REFUSAL
+            Err(_) => {
+                println!(
+                    r#"{{"version":"profile.v0","outcome":"REFUSAL","exit_code":2,"subcommand":"describe","result":{{"code":"E_IO","message":"Invalid operator.json format"}},"profile_ref":null,"witness_id":null}}"#
+                );
+                return EXIT_REFUSAL;
+            }
         }
+    } else {
+        print!("{}", OPERATOR_JSON);
     }
+    EXIT_SUCCESS
 }
 
 fn handle_schema(json_output: bool) -> u8 {

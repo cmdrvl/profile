@@ -79,14 +79,14 @@ A draft is cheap to iterate. A frozen profile is immutable and hashable for repr
 
 ```
                         ┌── shape ──┐
-vacuum → hash → lock    │           │
+vacuum → hashbytes → lock    │           │
                         ├── rvl ────┤ ← --profile
                         │           │
                         └── compare ┘
          profile ───────────────────┘
 ```
 
-Profile doesn't sit in the stream pipeline (vacuum → hash → lock). Instead, it produces configuration files that report tools consume via `--profile`. Lock records which profiles were active in its `profiles` array.
+Profile doesn't sit in the stream pipeline (vacuum → hashbytes → lock). Instead, it produces configuration files that report tools consume via `--profile`. Lock records which profiles were active in its `profiles` array.
 
 ---
 
