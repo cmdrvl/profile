@@ -52,12 +52,65 @@ pub fn last_id() -> Result<Option<String>, RefusalPayload> {
         .map(std::string::ToString::to_string))
 }
 
-fn ledger_path() -> Result<PathBuf, RefusalPayload> {
-    let home = std::env::var("HOME").map_err(|error| {
-        RefusalPayload::io(
-            "$HOME".to_string(),
-            format!("HOME environment variable unavailable: {error}"),
-        )
-    })?;
+pub(crate) fn ledger_path() -> Result<PathBuf, RefusalPayload> {
+    ledger_path_from_env(|key| std::env::var(key).ok())
+}
+
+fn ledger_path_from_env<F>(get_env: F) -> Result<PathBuf, RefusalPayload>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    if let Some(path) = get_env("EPISTEMIC_WITNESS")
+        && !path.trim().is_empty()
+    {
+        return Ok(PathBuf::from(path));
+    }
+
+    let home = get_env("HOME")
+        .or_else(|| get_env("USERPROFILE"))
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            RefusalPayload::io(
+                "$HOME".to_string(),
+                "HOME/USERPROFILE unavailable; set EPISTEMIC_WITNESS".to_string(),
+            )
+        })?;
+
     Ok(PathBuf::from(home).join(".epistemic").join("witness.jsonl"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ledger_path_from_env;
+    use std::path::PathBuf;
+
+    #[test]
+    fn ledger_path_prefers_epistemic_witness_override() {
+        let path = ledger_path_from_env(|key| match key {
+            "EPISTEMIC_WITNESS" => Some("/tmp/profile-witness.jsonl".to_string()),
+            "HOME" => Some("/tmp/home".to_string()),
+            _ => None,
+        })
+        .expect("override path");
+
+        assert_eq!(path, PathBuf::from("/tmp/profile-witness.jsonl"));
+    }
+
+    #[test]
+    fn ledger_path_falls_back_to_home() {
+        let path = ledger_path_from_env(|key| match key {
+            "EPISTEMIC_WITNESS" => Some(String::new()),
+            "HOME" => Some("/tmp/home".to_string()),
+            _ => None,
+        })
+        .expect("home path");
+
+        assert_eq!(path, PathBuf::from("/tmp/home/.epistemic/witness.jsonl"));
+    }
+
+    #[test]
+    fn ledger_path_errors_without_override_or_home() {
+        let error = ledger_path_from_env(|_| None).expect_err("missing path should refuse");
+        assert_eq!(error.code, "E_IO");
+    }
 }

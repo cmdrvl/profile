@@ -35,6 +35,44 @@ fn witness_append_policy_respects_subcommand_and_no_witness_flag() {
 }
 
 #[test]
+fn witness_append_and_query_honor_epistemic_witness_override() {
+    let workspace = temp_workspace();
+    let home = workspace.path();
+    let witness_root = temp_workspace();
+    let ledger_path = witness_root.path().join("nested").join("witness.jsonl");
+    let dataset = workspace.path().join("dataset.csv");
+    fs::write(&dataset, "loan_id,balance\nL1,100\nL2,200\n").expect("dataset should be written");
+
+    let stats_assert = profile_cmd()
+        .env("HOME", home)
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .arg("stats")
+        .arg(&dataset)
+        .assert();
+    common::assert_success_exit!(stats_assert);
+    assert_eq!(ledger_line_count_at(&ledger_path), 1);
+    assert!(!home.join(".epistemic").join("witness.jsonl").exists());
+
+    let count_assert = profile_cmd()
+        .env("HOME", home)
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .arg("--json")
+        .arg("witness")
+        .arg("count")
+        .assert();
+    let count_envelope = parse_stdout_json(&count_assert);
+    common::assert_success_exit!(count_assert);
+    assert_json_envelope_shape(&count_envelope);
+    assert_eq!(
+        count_envelope
+            .get("result")
+            .and_then(|r| r.get("count"))
+            .and_then(|v| v.as_u64()),
+        Some(1)
+    );
+}
+
+#[test]
 fn witness_query_last_count_read_ledger_deterministically() {
     let workspace = temp_workspace();
     let home = workspace.path();
@@ -177,7 +215,10 @@ fn json_envelope_exposes_witness_id_only_when_append_succeeds() {
 }
 
 fn ledger_line_count(home: &std::path::Path) -> usize {
-    let path = home.join(".epistemic").join("witness.jsonl");
+    ledger_line_count_at(&home.join(".epistemic").join("witness.jsonl"))
+}
+
+fn ledger_line_count_at(path: &std::path::Path) -> usize {
     let content = fs::read_to_string(path).expect("witness ledger should exist");
     content
         .lines()

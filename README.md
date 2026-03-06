@@ -306,7 +306,7 @@ With `--json`, refusals are emitted in the unified output envelope (`outcome=REF
 - Witness append is enabled for: `freeze`, `validate`, `lint`, `stats`, `suggest-key`
 - Witness append is skipped for: `draft new`, `draft init`, `list`, `show`, `diff`, `push`, `pull`
 - `--no-witness` disables witness writes without changing domain outcome or exit semantics
-- Ledger path: `~/.epistemic/witness.jsonl`
+- Ledger path: `$EPISTEMIC_WITNESS` or `~/.epistemic/witness.jsonl`
 - Witness append failures warn on stderr and do not change primary command outcome/exit code
 
 ---

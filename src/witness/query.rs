@@ -1,10 +1,10 @@
 use std::fs;
-use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
 use crate::cli::args::{WitnessCountArgs, WitnessLastArgs, WitnessQueryArgs};
 use crate::refusal::RefusalPayload;
+use crate::witness::ledger::ledger_path;
 
 pub fn run_query(args: &WitnessQueryArgs) -> Result<Value, RefusalPayload> {
     let mut records = read_ledger_records()?;
@@ -55,14 +55,4 @@ fn read_ledger_records() -> Result<Vec<Value>, RefusalPayload> {
     }
 
     Ok(records)
-}
-
-fn ledger_path() -> Result<PathBuf, RefusalPayload> {
-    let home = std::env::var("HOME").map_err(|error| {
-        RefusalPayload::io(
-            "$HOME".to_string(),
-            format!("HOME environment variable unavailable: {error}"),
-        )
-    })?;
-    Ok(PathBuf::from(home).join(".epistemic").join("witness.jsonl"))
 }
