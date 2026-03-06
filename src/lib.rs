@@ -23,6 +23,13 @@ pub mod witness;
 type HandlerResult = Result<Value, RefusalPayload>;
 
 pub fn run() -> u8 {
+    if let Some(display_mode) = detect_display_mode(std::env::args_os()) {
+        return match display_mode {
+            DisplayMode::Describe { json_output } => handle_describe(json_output),
+            DisplayMode::Schema { json_output } => handle_schema(json_output),
+        };
+    }
+
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
@@ -130,6 +137,31 @@ fn handle_describe(json_output: bool) -> u8 {
         print!("{}", OPERATOR_JSON);
     }
     EXIT_SUCCESS
+}
+
+enum DisplayMode {
+    Describe { json_output: bool },
+    Schema { json_output: bool },
+}
+
+fn detect_display_mode<I, T>(args: I) -> Option<DisplayMode>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString>,
+{
+    let args = args
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<std::ffi::OsString>>();
+    let json_output = args.iter().skip(1).any(|arg| arg == "--json");
+
+    if args.iter().skip(1).any(|arg| arg == "--describe") {
+        Some(DisplayMode::Describe { json_output })
+    } else if args.iter().skip(1).any(|arg| arg == "--schema") {
+        Some(DisplayMode::Schema { json_output })
+    } else {
+        None
+    }
 }
 
 fn handle_schema(json_output: bool) -> u8 {

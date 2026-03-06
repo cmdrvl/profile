@@ -65,3 +65,57 @@ fn describe_json_wraps_operator_manifest_with_expected_fields() {
         Some("ISSUES_FOUND")
     );
 }
+
+#[test]
+fn describe_short_circuits_before_invalid_witness_args_are_parsed() {
+    let assert = profile_cmd()
+        .arg("--describe")
+        .arg("witness")
+        .arg("last")
+        .arg("--count")
+        .arg("nope")
+        .assert();
+    let manifest: Value = serde_json::from_slice(&assert.get_output().stdout)
+        .expect("describe output should be JSON");
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+    common::assert_success_exit!(assert);
+
+    assert_eq!(
+        manifest.get("schema_version").and_then(|v| v.as_str()),
+        Some("operator.v0")
+    );
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn schema_json_short_circuits_before_invalid_freeze_args_are_parsed() {
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--schema")
+        .arg("freeze")
+        .arg("missing.yaml")
+        .arg("--version")
+        .arg("nope")
+        .arg("--family")
+        .arg("csv.demo")
+        .arg("--out")
+        .arg("out.yaml")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+    common::assert_success_exit!(assert);
+
+    assert_json_envelope_shape(&envelope);
+    assert_eq!(
+        envelope.get("subcommand").and_then(|v| v.as_str()),
+        Some("schema")
+    );
+    assert_eq!(
+        envelope
+            .get("result")
+            .and_then(|schema| schema.get("$id"))
+            .and_then(|v| v.as_str()),
+        Some("https://epistemic.so/schemas/profile.v1.json")
+    );
+    assert_eq!(stderr, "");
+}
