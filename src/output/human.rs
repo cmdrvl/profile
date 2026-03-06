@@ -1,14 +1,15 @@
 use serde_json::Value;
 
 use crate::cli::exit::{EXIT_ISSUES_FOUND, EXIT_REFUSAL, EXIT_SUCCESS};
+use crate::output::json::CommandOutput;
 use crate::refusal::RefusalPayload;
 
 /// Emit human-readable output without JSON envelope
-pub fn emit(subcommand: &str, result: Result<Value, RefusalPayload>) -> u8 {
+pub fn emit(subcommand: &str, result: Result<CommandOutput, RefusalPayload>) -> u8 {
     match result {
-        Ok(value) => {
-            emit_human_value(subcommand, &value);
-            if is_issues_found(subcommand, &value) {
+        Ok(output) => {
+            emit_human_value(subcommand, &output.result);
+            if is_issues_found(subcommand, &output.result) {
                 EXIT_ISSUES_FOUND
             } else {
                 EXIT_SUCCESS

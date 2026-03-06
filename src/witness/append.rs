@@ -11,9 +11,9 @@ pub fn append_for_command(
     input_paths: Vec<PathBuf>,
     params: Value,
     no_witness: bool,
-) {
+) -> Option<String> {
     if no_witness || !witness_enabled_subcommand(subcommand) {
-        return;
+        return None;
     }
 
     let outcome = if subcommand == "lint"
@@ -32,7 +32,7 @@ pub fn append_for_command(
         Ok(inputs) => inputs,
         Err(error) => {
             eprintln!("Warning: witness append skipped (input metadata failed): {error}");
-            return;
+            return None;
         }
     };
 
@@ -40,7 +40,7 @@ pub fn append_for_command(
         Ok(hash) => hash,
         Err(error) => {
             eprintln!("Warning: witness append skipped (output hash failed): {error}");
-            return;
+            return None;
         }
     };
 
@@ -48,7 +48,7 @@ pub fn append_for_command(
         Ok(prev) => prev,
         Err(error) => {
             eprintln!("Warning: witness append skipped (read previous id failed): {error}");
-            return;
+            return None;
         }
     };
 
@@ -62,8 +62,12 @@ pub fn append_for_command(
         prev,
     );
 
-    if let Err(error) = ledger::append(&record) {
-        eprintln!("Warning: witness append failed: {error}");
+    match ledger::append(&record) {
+        Ok(witness_id) => witness_id,
+        Err(error) => {
+            eprintln!("Warning: witness append failed: {error}");
+            None
+        }
     }
 }
 

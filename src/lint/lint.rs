@@ -2,14 +2,15 @@ use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::cli::args::LintArgs;
+use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
 use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
 use crate::witness::append::append_for_command;
 
-pub fn run(args: &LintArgs, no_witness: bool) -> Result<Value, RefusalPayload> {
+pub fn run(args: &LintArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
     let profile_content = fs::read_to_string(&args.profile).map_err(|error| {
         RefusalPayload::io(args.profile.display().to_string(), error.to_string())
     })?;
@@ -58,7 +59,7 @@ pub fn run(args: &LintArgs, no_witness: bool) -> Result<Value, RefusalPayload> {
     }
 
     let result = json!({ "issues": issues });
-    append_for_command(
+    let witness_id = append_for_command(
         "lint",
         &result,
         vec![args.profile.clone(), args.against.clone()],
@@ -69,5 +70,7 @@ pub fn run(args: &LintArgs, no_witness: bool) -> Result<Value, RefusalPayload> {
         no_witness,
     );
 
-    Ok(result)
+    Ok(CommandOutput::success(result)
+        .with_profile_ref(ProfileRef::from_profile(&profile))
+        .with_witness_id(witness_id))
 }

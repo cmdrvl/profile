@@ -2,9 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 
 use csv::StringRecord;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::cli::args::StatsArgs;
+use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
 use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
 use crate::witness::append::append_for_command;
@@ -16,6 +17,11 @@ struct ColumnAccumulator {
     null_count: usize,
     values: HashSet<String>,
     example: Option<String>,
+}
+
+struct SelectedColumns {
+    columns: Vec<(String, usize)>,
+    profile_ref: Option<ProfileRef>,
 }
 
 impl ColumnAccumulator {
@@ -33,7 +39,11 @@ impl ColumnAccumulator {
     }
 }
 
-pub fn run(args: &StatsArgs, no_witness: bool, explicit: bool) -> Result<Value, RefusalPayload> {
+pub fn run(
+    args: &StatsArgs,
+    no_witness: bool,
+    explicit: bool,
+) -> Result<CommandOutput, RefusalPayload> {
     let file = File::open(&args.dataset).map_err(|error| {
         RefusalPayload::io(args.dataset.display().to_string(), error.to_string())
     })?;
@@ -41,13 +51,15 @@ pub fn run(args: &StatsArgs, no_witness: bool, explicit: bool) -> Result<Value, 
     let mut reader = csv::Reader::from_reader(file);
     let headers = read_headers(&mut reader, &args.dataset.display().to_string())?;
 
-    let selected_columns = resolve_selected_columns(args, &headers)?;
-    let selected_column_names = selected_columns
+    let selected = resolve_selected_columns(args, &headers)?;
+    let selected_column_names = selected
+        .columns
         .iter()
         .map(|(name, _)| name.clone())
         .collect::<Vec<_>>();
 
-    let mut accumulators = selected_columns
+    let mut accumulators = selected
+        .columns
         .iter()
         .map(|_| ColumnAccumulator::default())
         .collect::<Vec<_>>();
@@ -58,7 +70,7 @@ pub fn run(args: &StatsArgs, no_witness: bool, explicit: bool) -> Result<Value, 
             RefusalPayload::csv_parse(args.dataset.display().to_string(), error.to_string())
         })?;
         row_count += 1;
-        apply_record(&record, &selected_columns, &mut accumulators);
+        apply_record(&record, &selected.columns, &mut accumulators);
     }
 
     if row_count == 0 {
@@ -102,7 +114,7 @@ pub fn run(args: &StatsArgs, no_witness: bool, explicit: bool) -> Result<Value, 
         inputs.push(profile.clone());
     }
 
-    append_for_command(
+    let witness_id = append_for_command(
         "stats",
         &result,
         inputs,
@@ -113,7 +125,9 @@ pub fn run(args: &StatsArgs, no_witness: bool, explicit: bool) -> Result<Value, 
         no_witness,
     );
 
-    Ok(result)
+    Ok(CommandOutput::success(result)
+        .with_profile_ref(selected.profile_ref)
+        .with_witness_id(witness_id))
 }
 
 fn read_headers(
@@ -138,7 +152,7 @@ fn read_headers(
 fn resolve_selected_columns(
     args: &StatsArgs,
     headers: &StringRecord,
-) -> Result<Vec<(String, usize)>, RefusalPayload> {
+) -> Result<SelectedColumns, RefusalPayload> {
     let index_by_name = headers
         .iter()
         .enumerate()
@@ -152,6 +166,7 @@ fn resolve_selected_columns(
 
         let profile = parse_profile_yaml(&profile_content)?;
         validate_profile(&profile, ValidationMode::Validate)?;
+        let profile_ref = ProfileRef::from_profile(&profile);
 
         let mut selected = Vec::with_capacity(profile.include_columns.len());
         let mut missing = Vec::new();
@@ -172,14 +187,20 @@ fn resolve_selected_columns(
             return Err(RefusalPayload::column_not_found(missing, available));
         }
 
-        return Ok(selected);
+        return Ok(SelectedColumns {
+            columns: selected,
+            profile_ref,
+        });
     }
 
-    Ok(headers
-        .iter()
-        .enumerate()
-        .map(|(index, name)| (name.to_string(), index))
-        .collect::<Vec<_>>())
+    Ok(SelectedColumns {
+        columns: headers
+            .iter()
+            .enumerate()
+            .map(|(index, name)| (name.to_string(), index))
+            .collect::<Vec<_>>(),
+        profile_ref: None,
+    })
 }
 
 fn apply_record(

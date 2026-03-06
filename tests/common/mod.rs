@@ -43,6 +43,12 @@ pub fn parse_stdout_json(assert: &Assert) -> Value {
 }
 
 pub fn assert_json_envelope_shape(value: &Value) {
+    assert_eq!(
+        value.get("version").and_then(|entry| entry.as_str()),
+        Some("profile.v0"),
+        "expected output envelope version to match profile contract"
+    );
+
     for key in [
         "version",
         "outcome",

@@ -1,7 +1,8 @@
-use serde_json::{Value, json};
+use serde_json::json;
 use std::fs;
 
 use crate::cli::args::FreezeArgs;
+use crate::output::json::CommandOutput;
 use crate::refusal::RefusalPayload;
 use crate::schema::{
     ProfileStatus, ValidationMode, canonical_yaml, compute_profile_sha256, is_valid_profile_family,
@@ -9,7 +10,7 @@ use crate::schema::{
 };
 use crate::witness::append::append_for_command;
 
-pub fn run(args: &FreezeArgs, no_witness: bool) -> Result<Value, RefusalPayload> {
+pub fn run(args: &FreezeArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
     // Check if output file already exists
     if args.out.exists() {
         return Err(RefusalPayload::io(
@@ -75,7 +76,7 @@ pub fn run(args: &FreezeArgs, no_witness: bool) -> Result<Value, RefusalPayload>
         "profile_id": profile.profile_id,
         "profile_sha256": profile.profile_sha256
     });
-    append_for_command(
+    let witness_id = append_for_command(
         "freeze",
         &result,
         vec![args.draft.clone()],
@@ -87,5 +88,5 @@ pub fn run(args: &FreezeArgs, no_witness: bool) -> Result<Value, RefusalPayload>
         no_witness,
     );
 
-    Ok(result)
+    Ok(CommandOutput::success(result).with_witness_id(witness_id))
 }

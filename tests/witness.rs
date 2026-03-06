@@ -136,6 +136,46 @@ fn witness_query_last_count_read_ledger_deterministically() {
     );
 }
 
+#[test]
+fn json_envelope_exposes_witness_id_only_when_append_succeeds() {
+    let workspace = temp_workspace();
+    let home = workspace.path();
+    let dataset = workspace.path().join("dataset.csv");
+    fs::write(&dataset, "loan_id,balance\nL1,100\nL2,200\n").expect("dataset should be written");
+
+    let witnessed_assert = profile_cmd()
+        .env("HOME", home)
+        .arg("--json")
+        .arg("stats")
+        .arg(&dataset)
+        .assert();
+    let witnessed_envelope = parse_stdout_json(&witnessed_assert);
+    common::assert_success_exit!(witnessed_assert);
+    assert_json_envelope_shape(&witnessed_envelope);
+    assert!(
+        witnessed_envelope
+            .get("witness_id")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| value.starts_with("blake3:"))
+    );
+
+    let no_witness_assert = profile_cmd()
+        .env("HOME", home)
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("stats")
+        .arg(&dataset)
+        .assert();
+    let no_witness_envelope = parse_stdout_json(&no_witness_assert);
+    common::assert_success_exit!(no_witness_assert);
+    assert_json_envelope_shape(&no_witness_envelope);
+    assert!(
+        no_witness_envelope
+            .get("witness_id")
+            .is_some_and(|value| value.is_null())
+    );
+}
+
 fn ledger_line_count(home: &std::path::Path) -> usize {
     let path = home.join(".epistemic").join("witness.jsonl");
     let content = fs::read_to_string(path).expect("witness ledger should exist");

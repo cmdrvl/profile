@@ -5,9 +5,10 @@ use std::path::Path;
 
 use csv::ReaderBuilder;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::cli::args::SuggestKeyArgs;
+use crate::output::json::CommandOutput;
 use crate::refusal::RefusalPayload;
 use crate::witness::append::append_for_command;
 
@@ -40,7 +41,7 @@ impl ColumnStats {
     }
 }
 
-pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<Value, RefusalPayload> {
+pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
     let file = File::open(&args.dataset).map_err(|error| {
         RefusalPayload::io(args.dataset.display().to_string(), error.to_string())
     })?;
@@ -103,7 +104,7 @@ pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<Value, RefusalPayl
         }
     });
 
-    append_for_command(
+    let witness_id = append_for_command(
         "suggest-key",
         &result,
         vec![args.dataset.clone()],
@@ -114,7 +115,7 @@ pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<Value, RefusalPayl
         no_witness,
     );
 
-    Ok(result)
+    Ok(CommandOutput::success(result).with_witness_id(witness_id))
 }
 
 fn analyze_columns(

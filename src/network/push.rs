@@ -5,14 +5,15 @@ use serde_json::{Value, json};
 
 use crate::cli::args::PushArgs;
 use crate::network::post_json;
+use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::payload::RefusalPayload;
 use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
 
-pub fn run(args: &PushArgs, _no_witness: bool) -> Result<Value, RefusalPayload> {
+pub fn run(args: &PushArgs, _no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
     handle_push(&args.file)
 }
 
-pub fn handle_push(file: &Path) -> Result<Value, RefusalPayload> {
+pub fn handle_push(file: &Path) -> Result<CommandOutput, RefusalPayload> {
     let content = fs::read_to_string(file)
         .map_err(|error| RefusalPayload::io(file.display().to_string(), error.to_string()))?;
 
@@ -57,12 +58,14 @@ pub fn handle_push(file: &Path) -> Result<Value, RefusalPayload> {
     let response_body = post_json("/execute", &command)?;
     assert_no_fabric_errors(&response_body)?;
 
-    Ok(json!({
+    let result = json!({
         "published": true,
         "profile_id": profile_id,
         "profile_sha256": profile_sha256,
         "source_path": file.display().to_string()
-    }))
+    });
+
+    Ok(CommandOutput::success(result).with_profile_ref(ProfileRef::from_profile(&profile)))
 }
 
 fn assert_no_fabric_errors(body: &str) -> Result<(), RefusalPayload> {

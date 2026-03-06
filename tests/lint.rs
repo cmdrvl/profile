@@ -186,3 +186,43 @@ fn lint_human_output_contract_for_refusal() {
         .stderr(predicate::str::contains("Error:"))
         .stderr(predicate::str::contains("Profile fails schema validation"));
 }
+
+#[test]
+fn lint_json_includes_profile_lineage_and_witness_linkage_for_frozen_profiles() {
+    let workspace = temp_workspace();
+    let home_dir = workspace.path().join("home");
+    fs::create_dir_all(&home_dir).expect("home directory should be created");
+
+    let assert = profile_cmd()
+        .env("HOME", &home_dir)
+        .arg("--json")
+        .arg("lint")
+        .arg(fixture_path("profiles/valid/frozen_complete.yaml"))
+        .arg("--against")
+        .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    assert_json_envelope_shape(&envelope);
+    assert_eq!(
+        envelope
+            .get("profile_ref")
+            .and_then(|value| value.get("profile_id"))
+            .and_then(|value| value.as_str()),
+        Some("csv.loan_tape.core.v0")
+    );
+    assert_eq!(
+        envelope
+            .get("profile_ref")
+            .and_then(|value| value.get("profile_sha256"))
+            .and_then(|value| value.as_str()),
+        Some("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+    );
+    assert!(
+        envelope
+            .get("witness_id")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| value.starts_with("blake3:"))
+    );
+}

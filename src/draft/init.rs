@@ -81,6 +81,7 @@ fn resolve_auto_key(args: &DraftInitArgs) -> Result<Vec<String>, RefusalPayload>
     let suggest_output = suggest_key::run(&suggest_args, true)?;
 
     let candidate = suggest_output
+        .result
         .get("candidates")
         .and_then(Value::as_array)
         .and_then(|candidates| candidates.first());

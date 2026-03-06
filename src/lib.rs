@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use crate::cli::args::{Cli, Command, DraftArgs, DraftCommand, WitnessArgs, WitnessCommand};
 use crate::cli::exit::{EXIT_REFUSAL, EXIT_SUCCESS};
+use crate::output::json::CommandOutput;
 use crate::refusal::RefusalPayload;
 
 pub mod cli;
@@ -20,7 +21,7 @@ pub mod schema;
 pub mod stats;
 pub mod witness;
 
-type HandlerResult = Result<Value, RefusalPayload>;
+type HandlerResult = Result<CommandOutput, RefusalPayload>;
 
 pub fn run() -> u8 {
     if let Some(display_mode) = detect_display_mode(std::env::args_os()) {
@@ -70,23 +71,33 @@ pub fn run() -> u8 {
 fn dispatch(command: &Command, no_witness: bool, explicit: bool) -> HandlerResult {
     match command {
         Command::Draft(DraftArgs { command }) => match command {
-            DraftCommand::New(args) => draft::new::run(args, no_witness),
-            DraftCommand::Init(args) => draft::init::run(args, no_witness),
+            DraftCommand::New(args) => {
+                draft::new::run(args, no_witness).map(CommandOutput::success)
+            }
+            DraftCommand::Init(args) => {
+                draft::init::run(args, no_witness).map(CommandOutput::success)
+            }
         },
         Command::Validate(args) => lint::validate::run(args, no_witness),
         Command::Lint(args) => lint::lint::run(args, no_witness),
         Command::Stats(args) => stats::stats::run(args, no_witness, explicit),
         Command::SuggestKey(args) => stats::suggest_key::run(args, no_witness),
         Command::Freeze(args) => freeze::freeze::run(args, no_witness),
-        Command::List(args) => resolve::list::run(args, no_witness),
+        Command::List(args) => resolve::list::run(args, no_witness).map(CommandOutput::success),
         Command::Show(args) => resolve::show::run(args, no_witness),
-        Command::Diff(args) => diff::diff::run(args, no_witness),
+        Command::Diff(args) => diff::diff::run(args, no_witness).map(CommandOutput::success),
         Command::Push(args) => network::push::run(args, no_witness),
-        Command::Pull(args) => network::pull::run(args, no_witness),
+        Command::Pull(args) => network::pull::run(args, no_witness).map(CommandOutput::success),
         Command::Witness(WitnessArgs { command }) => match command {
-            WitnessCommand::Query(args) => witness::query::run_query(args),
-            WitnessCommand::Last(args) => witness::query::run_last(args),
-            WitnessCommand::Count(args) => witness::query::run_count(args),
+            WitnessCommand::Query(args) => {
+                witness::query::run_query(args).map(CommandOutput::success)
+            }
+            WitnessCommand::Last(args) => {
+                witness::query::run_last(args).map(CommandOutput::success)
+            }
+            WitnessCommand::Count(args) => {
+                witness::query::run_count(args).map(CommandOutput::success)
+            }
         },
     }
 }
