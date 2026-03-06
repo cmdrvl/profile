@@ -52,6 +52,17 @@ fn witness_append_and_query_honor_epistemic_witness_override() {
     common::assert_success_exit!(stats_assert);
     assert_eq!(ledger_line_count_at(&ledger_path), 1);
     assert!(!home.join(".epistemic").join("witness.jsonl").exists());
+    let record = read_ledger_record(&ledger_path, 0);
+    assert_eq!(
+        record.get("version").and_then(|value| value.as_str()),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+    assert!(
+        record
+            .get("binary_hash")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| value.starts_with("blake3:"))
+    );
 
     let count_assert = profile_cmd()
         .env("HOME", home)
@@ -84,6 +95,8 @@ fn witness_query_last_count_read_ledger_deterministically() {
         "id": "blake3:first",
         "ts": "2026-02-27T00:00:00Z",
         "tool": "profile",
+        "version": "0.0.0-test",
+        "binary_hash": "blake3:binary-first",
         "inputs": [],
         "params": { "subcommand": "stats" },
         "output_hash": "blake3:a",
@@ -95,6 +108,8 @@ fn witness_query_last_count_read_ledger_deterministically() {
         "id": "blake3:second",
         "ts": "2026-02-27T00:01:00Z",
         "tool": "profile",
+        "version": "0.0.0-test",
+        "binary_hash": "blake3:binary-second",
         "inputs": [],
         "params": { "subcommand": "lint" },
         "output_hash": "blake3:b",
@@ -102,9 +117,24 @@ fn witness_query_last_count_read_ledger_deterministically() {
         "exit_code": 1,
         "prev": "blake3:first"
     });
+    let other_tool = json!({
+        "id": "blake3:other",
+        "ts": "2026-02-27T00:02:00Z",
+        "tool": "lock",
+        "version": "0.0.0-test",
+        "binary_hash": "blake3:binary-other",
+        "inputs": [],
+        "params": {},
+        "output_hash": "blake3:c",
+        "outcome": "LOCK_CREATED",
+        "exit_code": 0,
+        "prev": "blake3:second"
+    });
     let mut contents = serde_json::to_string(&first).expect("first JSON");
     contents.push('\n');
     contents.push_str(&serde_json::to_string(&second).expect("second JSON"));
+    contents.push('\n');
+    contents.push_str(&serde_json::to_string(&other_tool).expect("other JSON"));
     contents.push('\n');
     fs::write(&ledger_path, contents).expect("ledger should be written");
 
@@ -122,7 +152,8 @@ fn witness_query_last_count_read_ledger_deterministically() {
             .get("result")
             .and_then(|r| r.get("count"))
             .and_then(|v| v.as_u64()),
-        Some(2)
+        Some(2),
+        "profile witness count should ignore other tools"
     );
 
     let last_assert = profile_cmd()
@@ -224,4 +255,14 @@ fn ledger_line_count_at(path: &std::path::Path) -> usize {
         .lines()
         .filter(|line| !line.trim().is_empty())
         .count()
+}
+
+fn read_ledger_record(path: &std::path::Path, index: usize) -> serde_json::Value {
+    let content = fs::read_to_string(path).expect("witness ledger should exist");
+    let line = content
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .nth(index)
+        .expect("expected witness record");
+    serde_json::from_str(line).expect("witness line should parse")
 }

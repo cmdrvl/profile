@@ -51,7 +51,9 @@ fn read_ledger_records() -> Result<Vec<Value>, RefusalPayload> {
                 format!("invalid ledger JSON at line {}: {}", index + 1, error),
             )
         })?;
-        records.push(value);
+        if value.get("tool").and_then(Value::as_str) == Some("profile") {
+            records.push(value);
+        }
     }
 
     Ok(records)
