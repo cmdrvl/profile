@@ -10,4 +10,14 @@ golden_rules_suite! {
         "src/refusal/payload.rs",
         "src/witness/ledger.rs",
     ],
+    fixture_success_args: &[
+        "show",
+        "tests/fixtures/profiles/valid/frozen_complete.yaml",
+        "--json", "--no-witness",
+    ],
+    fixture_refusal_args: &[
+        "show",
+        "/nonexistent/profile.yaml",
+        "--json", "--no-witness",
+    ],
 }

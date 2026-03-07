@@ -354,7 +354,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -855,7 +855,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -999,7 +999,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 [[package]]
 name = "spine-rules"
 version = "0.1.0"
-source = "git+https://github.com/cmdrvl/spine-rules#30a089e50e2a57a0a56cd6d42726d93219e982c9"
+source = "git+https://github.com/cmdrvl/spine-rules#cff6c63abba56434e1c05573c87f095a6e06b2c7"
 dependencies = [
  "serde",
  "serde_json",
@@ -1056,7 +1056,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
