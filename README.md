@@ -17,13 +17,13 @@ brew install cmdrvl/tap/profile
 
 Your dataset has 42 columns. 15 of them matter for this analysis. The key is `loan_id`. Float precision is 6 decimal places. Order doesn't matter. Where does this knowledge live? In a Slack thread? In someone's head? In a `--exclude` flag you'll forget next month?
 
-**profile captures all of it in a versioned YAML file that every report tool consumes.** Draft one from a real CSV header, iterate until it's right, then freeze it — immutable, SHA-256 hashed, recorded in every lockfile and report that uses it. Change a column? New version. Full audit trail.
+**profile captures all of it in a versioned YAML file that downstream report tools can consume.** Draft one from a real CSV header, iterate until it's right, then freeze it — immutable, SHA-256 hashed, recorded in every lockfile and report that uses it. Change a column? New version. Full audit trail.
 
 ### What makes this different
 
 - **Draft → freeze lifecycle** — `profile draft init` reads a CSV header and generates a starting profile. Edit it. Lint it against real data. When it's right, `profile freeze` makes it immutable and content-addressed.
 - **Key intelligence** — `profile suggest-key` ranks candidate key columns by uniqueness, null rate, and type. No guessing.
-- **One file, all tools** — the same frozen profile is consumed by `shape`, `rvl`, `compare`, and `lock`. Declare your scoping once.
+- **One file, reusable scoping** — `rvl` consumes frozen profiles today, and the same artifact is the intended scoping surface for `shape`, `compare`, and `lock` as those integrations settle. Declare your domain choices once.
 - **Schema drift detection** — `profile lint --against data.csv` catches columns that disappeared, keys that aren't unique, and types that shifted.
 
 ---
@@ -44,11 +44,11 @@ profile freeze loan_tape.draft.yaml \
   --version 0 \
   --out profiles/csv.loan_tape.core.v0.yaml
 
-# 4) Use the frozen profile in report tools
-shape old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
+# 4) Use the frozen profile with the current live downstream surface
 rvl old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
-compare old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
 ```
+
+`rvl` is profile-aware today. Check `shape` / `compare` operator contracts before assuming equivalent `--profile` behavior in the current release line.
 
 ---
 
@@ -78,15 +78,13 @@ A draft is cheap to iterate. A frozen profile is immutable and hashable for repr
 `profile` is a **metadata tool** that configures how report tools operate.
 
 ```
-                        ┌── shape ──┐
-vacuum → hashbytes → lock    │           │
-                        ├── rvl ────┤ ← --profile
-                        │           │
-                        └── compare ┘
-         profile ───────────────────┘
+vacuum → hashbytes → lock
+           ↑
+        profile → rvl
+        profile → shape / compare (planned or release-line dependent)
 ```
 
-Profile doesn't sit in the stream pipeline (vacuum → hashbytes → lock). Instead, it produces configuration files that report tools consume via `--profile`. Lock records which profiles were active in its `profiles` array.
+Profile doesn't sit in the stream pipeline (vacuum → hashbytes → lock). Instead, it produces configuration files that downstream tools can consume where the current runtime contract supports `--profile`. `rvl` is the live consumer today; other integrations are converging by tool/release line. Lock records which profiles were active in its `profiles` array.
 
 ---
 
@@ -245,17 +243,15 @@ cargo build --release
 
 ## Integration with Report Tools
 
-All report tools accept `--profile`:
+Current runtime support:
+
+- `rvl` accepts `--profile` today for key derivation and column scoping
+- `shape` exposes `--profile` / `--profile-id` flags, but its current operator contract still marks the check-scoping behavior as reserved/deferred
+- `compare` remains the deferred exhaustive diff tool in the broader spine roadmap
 
 ```bash
-# shape — only check overlap on profile columns
-shape old.csv new.csv --profile loan_profile.yaml --json
-
 # rvl — only explain changes in profile columns
 rvl old.csv new.csv --profile loan_profile.yaml --json
-
-# compare — only diff profile columns
-compare old.csv new.csv --profile loan_profile.yaml --json
 ```
 
 ### Lock Integration
