@@ -3,7 +3,8 @@ mod common;
 use std::fs;
 
 use common::{
-    assert_json_envelope_shape, fixture_path, parse_stdout_json, profile_cmd, temp_workspace,
+    assert_json_envelope_shape, copy_fixture, fixture_path, parse_stdout_json, profile_cmd,
+    temp_workspace,
 };
 use serde_yaml::Value as YamlValue;
 
@@ -177,6 +178,65 @@ fn draft_init_json_wraps_result_envelope() {
             .and_then(|v| v.as_str()),
         Some(out_path.to_string_lossy().as_ref())
     );
+}
+
+#[test]
+fn draft_init_with_column_registry_canonicalizes_headers_and_records_registry_path() {
+    let workspace = temp_workspace();
+    let registry_dir = workspace.path().join("registries").join("annex_columns_v0");
+    copy_fixture(
+        "registries/annex_columns_v0/registry.json",
+        registry_dir.join("registry.json"),
+    );
+    copy_fixture(
+        "registries/annex_columns_v0/aliases.json",
+        registry_dir.join("aliases.json"),
+    );
+
+    let out_path = workspace.path().join("canonicalized.yaml");
+    let assert = profile_cmd()
+        .current_dir(workspace.path())
+        .arg("draft")
+        .arg("init")
+        .arg(fixture_path("datasets/valid/loan_tape_alt_headers.csv"))
+        .arg("--out")
+        .arg(&out_path)
+        .arg("--column-registry")
+        .arg("registries/annex_columns_v0")
+        .arg("--key")
+        .arg("Loan Number")
+        .assert();
+    common::assert_success_exit!(assert);
+
+    let yaml = load_yaml(&out_path);
+    assert_eq!(
+        yaml["column_registry"].as_str(),
+        Some("registries/annex_columns_v0")
+    );
+
+    let include_columns = yaml["include_columns"]
+        .as_sequence()
+        .expect("include_columns should be a sequence")
+        .iter()
+        .map(|item| item.as_str().unwrap_or_default().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        include_columns,
+        vec![
+            "loan_id_number",
+            "current_balance",
+            "note_rate",
+            "general_property_type"
+        ]
+    );
+
+    let keys = yaml["key"]
+        .as_sequence()
+        .expect("key should be a sequence")
+        .iter()
+        .map(|item| item.as_str().unwrap_or_default().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(keys, vec!["loan_id_number"]);
 }
 
 fn load_yaml(path: &std::path::Path) -> YamlValue {

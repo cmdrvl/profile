@@ -101,6 +101,9 @@ pub struct Profile {
     pub format: ProfileFormat,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_registry: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hashing: Option<Hashing>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]

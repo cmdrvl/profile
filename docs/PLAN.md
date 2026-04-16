@@ -32,11 +32,11 @@ Report tools (`rvl`, `compare`, `shape`) need to know which columns to analyze. 
 - A template recognizer (that's `fingerprint`)
 - A diff tool (that's `rvl` / `compare`)
 - A comparability gate (that's `shape`)
-- A general-purpose extraction/transform pipeline (it only reads enough dataset structure for profile authoring checks)
+- A general-purpose extraction/transform pipeline (it only reads enough dataset structure for profile authoring checks and in-memory header canonicalization; it never rewrites datasets)
 - A fingerprint (profiles are YAML config, not Rust assertion crates)
 
 It does not tell you *what the data means*.
-It tells report tools *which columns to look at* and *how to normalize values* for comparison.
+It tells report tools *which columns to look at*, *how to canonicalize raw header aliases when a registry is provided*, and *how to normalize values* for comparison.
 
 **Clarification: profiles vs fingerprints.** Both are versioned and reviewable, but they serve different purposes:
 
@@ -139,19 +139,20 @@ Commands:
 profile draft new --format <FORMAT> --out <FILE>
   --format <FORMAT>      csv (v0.1); other formats deferred
 
-profile draft init <DATASET> --out <FILE> [--format <FORMAT>] [--key <COLUMN>]
+profile draft init <DATASET> --out <FILE> [--format <FORMAT>] [--key <COLUMN>] [--column-registry <PATH>]
   --format <FORMAT>      csv (v0.1); others deferred
   --out <FILE>           Output path for draft profile YAML
   --key <COLUMN>         Optional: set key explicitly
   --key auto             Optional: set key to the top suggest-key candidate
+  --column-registry <PATH> Optional: canon registry directory used to normalize headers to canonical column IDs
 
 profile validate <FILE> [--json]
 
 profile lint <PROFILE> --against <DATASET> [--json]
-  (checks schema validity, then checks referenced columns/key exist in the dataset)
+  (checks schema validity, then checks referenced columns/key exist in the dataset after optional registry-backed header canonicalization)
 
 profile stats <DATASET> [--profile <FILE>] [--json]
-  (reports column counts, null rates, and key viability; deterministic ordering)
+  (reports column counts, null rates, and key viability; deterministic ordering; when a profile carries column_registry, profile columns are resolved against canonicalized headers)
 
 profile suggest-key <DATASET> [--top <N>] [--json]
   (ranks candidates by uniqueness, null rate, and stability signals; deterministic)
@@ -375,6 +376,7 @@ The frozen file on disk uses canonical field order and block style, but includes
 | `profile_sha256` | string | frozen only | `"sha256:<hex>"` — lowercase hex SHA256 of canonicalized content, prefixed with `sha256:`. Excludes `profile_sha256` itself to avoid circular dependency |
 | `status` | string | yes | `"draft"` or `"frozen"` |
 | `format` | string | yes | v0.1 accepts `csv`; other formats are deferred |
+| `column_registry` | string | no | Local canon registry path used to normalize raw dataset headers to canonical column IDs before profile scoping |
 | `hashing` | object | no (default on freeze) | `{ algorithm: "sha256" }` |
 | `equivalence` | object | no (default on freeze) | Normalization rules |
 | `equivalence.order` | string | no (default on freeze) | `"order-invariant"` (default) or `"order-sensitive"` |
@@ -397,6 +399,7 @@ v0.1 validates family/version syntax and non-negative integer constraints. Globa
 ### What counts as breaking (requires new version)
 
 - Include/exclude column changes
+- Column registry path changes or alias-resolution contract changes
 - Normalization changes (trim, float quantization, date format)
 - Key requirement changes
 - Equivalence changes (order-sensitive ↔ order-invariant)
@@ -404,7 +407,7 @@ v0.1 validates family/version syntax and non-negative integer constraints. Globa
 
 ### What can be non-semantic (during draft iteration)
 
-- Any future annotation fields that do not affect `key`, `include_columns`, or `equivalence`
+- Any future annotation fields that do not affect `column_registry`, `key`, `include_columns`, or `equivalence`
 - Editorial changes (comments, ordering in non-canonical source YAML)
 - Once frozen, any edit still requires a new `profile_version` (and therefore a new `profile_id`); `profile_sha256` changes automatically
 
@@ -576,9 +579,11 @@ This is valid YAML and passes `validate`, but `freeze` rejects it because `inclu
 ### What `draft init` does (v0.1)
 
 1. Parses the dataset header deterministically (CSV)
-2. Emits a draft profile with `include_columns` set to the header columns (in file order)
-3. Sets `key` to the provided `--key`, to the top `suggest-key` candidate when `--key auto` (or `[]` if no viable candidate is found), or to an empty list otherwise
-4. Sets `equivalence.float_decimals: 6` and `equivalence.trim_strings: true` in the draft (editable before freezing). Omits `equivalence.order` and `hashing` — those are filled in by `freeze` with defaults (`order-invariant`, `sha256`)
+2. If `--column-registry` is provided, loads the registry and rewrites mapped header names to canonical column IDs in-memory before building the draft
+3. Emits a draft profile with `include_columns` set to the resolved column names (dataset order, deduped after canonicalization)
+4. Sets `key` to the provided `--key`, to the top `suggest-key` candidate when `--key auto` (or `[]` if no viable candidate is found), or to an empty list otherwise. When `--column-registry` is active, explicit or suggested keys are canonicalized through the same registry before being written to the draft.
+5. Records `column_registry` in the draft when provided
+6. Sets `equivalence.float_decimals: 6` and `equivalence.trim_strings: true` in the draft (editable before freezing). Omits `equivalence.order` and `hashing` — those are filled in by `freeze` with defaults (`order-invariant`, `sha256`)
 
 ### What `freeze` does (summary)
 
@@ -590,7 +595,7 @@ Any change after freeze = new version, no exceptions.
 
 Canonicalization produces a deterministic YAML byte string for SHA256 hashing. The rules:
 
-1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `hashing`, `equivalence`, `key`, `include_columns`
+1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `hashing`, `equivalence`, `key`, `include_columns`
 2. **Nested field order** within `hashing`: `algorithm`. Within `equivalence`: `order`, `float_decimals`, `trim_strings` (omitted fields stay omitted)
 3. **YAML style**: block style only (no flow sequences/mappings). Strings are unquoted unless they require quoting per YAML spec. Arrays use `- item` form (one item per line)
 4. **Trailing newline**: exactly one `\n` at end of file
@@ -695,7 +700,7 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
 
     diff:
       a. Resolve both profiles (paths or IDs) → E_IO if either not found
-      b. Compute structural diff over semantic fields only: format, hashing, equivalence, key, include_columns.
+      b. Compute structural diff over semantic fields only: format, column_registry, hashing, equivalence, key, include_columns.
          Identity fields (profile_id, profile_version, profile_family, profile_sha256, status, schema_version) are excluded — they are metadata, not scoping semantics. This means diffing a draft against a frozen profile reports only meaningful differences.
       c. Emit diff report (human or --json). Each difference: { field, a_value, b_value }.
       d. Exit 0 (identical) or 1 (differences found)

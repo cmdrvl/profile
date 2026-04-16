@@ -3,7 +3,8 @@ mod common;
 use std::fs;
 
 use common::{
-    assert_json_envelope_shape, fixture_path, parse_stdout_json, profile_cmd, temp_workspace,
+    assert_json_envelope_shape, copy_fixture, fixture_path, parse_stdout_json, profile_cmd,
+    temp_workspace,
 };
 use predicates::prelude::predicate;
 
@@ -225,4 +226,55 @@ fn lint_json_includes_profile_lineage_and_witness_linkage_for_frozen_profiles() 
             .and_then(|value| value.as_str())
             .is_some_and(|value| value.starts_with("blake3:"))
     );
+}
+
+#[test]
+fn lint_matches_canonical_profile_columns_via_registry_relative_to_profile() {
+    let workspace = temp_workspace();
+    let registry_dir = workspace.path().join("registries").join("annex_columns_v0");
+    copy_fixture(
+        "registries/annex_columns_v0/registry.json",
+        registry_dir.join("registry.json"),
+    );
+    copy_fixture(
+        "registries/annex_columns_v0/aliases.json",
+        registry_dir.join("aliases.json"),
+    );
+
+    let profile_path = workspace.path().join("profile.yaml");
+    fs::write(
+        &profile_path,
+        "\
+schema_version: 1
+status: draft
+format: csv
+column_registry: registries/annex_columns_v0
+key:
+  - loan_id_number
+include_columns:
+  - loan_id_number
+  - current_balance
+  - note_rate
+  - general_property_type
+",
+    )
+    .expect("profile fixture write should succeed");
+
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("lint")
+        .arg(&profile_path)
+        .arg("--against")
+        .arg(fixture_path("datasets/valid/loan_tape_alt_headers.csv"))
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    let issues = envelope
+        .get("result")
+        .and_then(|r| r.get("issues"))
+        .and_then(|v| v.as_array())
+        .expect("result.issues should be array");
+    assert!(issues.is_empty(), "expected registry-backed lint success");
 }

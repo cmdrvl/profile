@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 
@@ -7,7 +6,10 @@ use serde_json::json;
 use crate::cli::args::LintArgs;
 use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
-use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
+use crate::schema::{
+    ValidationMode, build_header_index, load_column_registry_aliases, parse_profile_yaml,
+    resolve_registry_path, validate_profile,
+};
 use crate::witness::append::append_for_command;
 
 pub fn run(args: &LintArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
@@ -35,11 +37,18 @@ pub fn run(args: &LintArgs, no_witness: bool) -> Result<CommandOutput, RefusalPa
         ));
     }
 
-    let available = headers.iter().collect::<HashSet<_>>();
+    let column_aliases = profile
+        .column_registry
+        .as_deref()
+        .map(|registry| {
+            load_column_registry_aliases(&resolve_registry_path(&args.profile, registry))
+        })
+        .transpose()?;
+    let available = build_header_index(&headers, column_aliases.as_ref());
     let mut issues = Vec::new();
 
     for column in &profile.include_columns {
-        if !available.contains(column.as_str()) {
+        if available.column_index(column).is_none() {
             issues.push(json!({
                 "kind": "missing_column",
                 "column": column,
@@ -49,7 +58,7 @@ pub fn run(args: &LintArgs, no_witness: bool) -> Result<CommandOutput, RefusalPa
     }
 
     for column in &profile.key {
-        if !available.contains(column.as_str()) {
+        if available.column_index(column).is_none() {
             issues.push(json!({
                 "kind": "missing_key",
                 "column": column,

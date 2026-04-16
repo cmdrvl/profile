@@ -34,6 +34,7 @@ fn build_draft_template(format: &DatasetFormat) -> Result<Profile, RefusalPayloa
         frozen: None,
         status: ProfileStatus::Draft,
         format: resolved_format,
+        column_registry: None,
         hashing: None,
         equivalence: Some(Equivalence {
             order: None,
@@ -56,6 +57,7 @@ fn render_yaml(profile: &Profile) -> Result<String, RefusalPayload> {
         schema_version: profile.schema_version,
         status: profile.status,
         format: profile.format,
+        column_registry: profile.column_registry.as_deref(),
         equivalence: profile.equivalence.as_ref(),
         key: profile.key.as_slice(),
         include_columns: profile.include_columns.as_slice(),
@@ -78,6 +80,8 @@ struct DraftTemplate<'a> {
     schema_version: u32,
     status: ProfileStatus,
     format: ProfileFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    column_registry: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     equivalence: Option<&'a Equivalence>,
     key: &'a [String],

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::File;
 
 use csv::StringRecord;
@@ -7,7 +7,10 @@ use serde_json::json;
 use crate::cli::args::StatsArgs;
 use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
-use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
+use crate::schema::{
+    ValidationMode, build_header_index, load_column_registry_aliases, parse_profile_yaml,
+    resolve_registry_path, validate_profile,
+};
 use crate::witness::append::append_for_command;
 
 const KEY_VIABLE_UNIQUENESS_THRESHOLD: f64 = 0.95;
@@ -153,12 +156,6 @@ fn resolve_selected_columns(
     args: &StatsArgs,
     headers: &StringRecord,
 ) -> Result<SelectedColumns, RefusalPayload> {
-    let index_by_name = headers
-        .iter()
-        .enumerate()
-        .map(|(index, name)| (name.to_string(), index))
-        .collect::<HashMap<_, _>>();
-
     if let Some(profile_path) = &args.profile {
         let profile_content = std::fs::read_to_string(profile_path).map_err(|error| {
             RefusalPayload::io(profile_path.display().to_string(), error.to_string())
@@ -167,12 +164,20 @@ fn resolve_selected_columns(
         let profile = parse_profile_yaml(&profile_content)?;
         validate_profile(&profile, ValidationMode::Validate)?;
         let profile_ref = ProfileRef::from_profile(&profile);
+        let column_aliases = profile
+            .column_registry
+            .as_deref()
+            .map(|registry| {
+                load_column_registry_aliases(&resolve_registry_path(profile_path, registry))
+            })
+            .transpose()?;
+        let index_by_name = build_header_index(headers, column_aliases.as_ref());
 
         let mut selected = Vec::with_capacity(profile.include_columns.len());
         let mut missing = Vec::new();
 
         for column in &profile.include_columns {
-            if let Some(index) = index_by_name.get(column).copied() {
+            if let Some(index) = index_by_name.column_index(column) {
                 selected.push((column.clone(), index));
             } else {
                 missing.push(column.clone());
@@ -180,11 +185,10 @@ fn resolve_selected_columns(
         }
 
         if !missing.is_empty() {
-            let available = headers
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect::<Vec<_>>();
-            return Err(RefusalPayload::column_not_found(missing, available));
+            return Err(RefusalPayload::column_not_found(
+                missing,
+                index_by_name.available(),
+            ));
         }
 
         return Ok(SelectedColumns {

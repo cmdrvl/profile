@@ -23,6 +23,7 @@ Your dataset has 42 columns. 15 of them matter for this analysis. The key is `lo
 
 - **Draft → freeze lifecycle** — `profile draft init` reads a CSV header and generates a starting profile. Edit it. Lint it against real data. When it's right, `profile freeze` makes it immutable and content-addressed.
 - **Key intelligence** — `profile suggest-key` ranks candidate key columns by uniqueness, null rate, and type. No guessing.
+- **Registry-backed header canonicalization** — optional `column_registry` lets the same profile survive heterogeneous raw headers by resolving them to canonical column IDs before scoping.
 - **One file, reusable scoping** — `rvl` consumes frozen profiles today, and the same artifact is the intended scoping surface for `shape`, `compare`, and `lock` as those integrations settle. Declare your domain choices once.
 - **Schema drift detection** — `profile lint --against data.csv` catches columns that disappeared, keys that aren't unique, and types that shifted.
 
@@ -110,6 +111,7 @@ A profile is a YAML file with a defined schema:
 ```yaml
 profile_id: "csv.loan_tape.core.v0"
 profile_version: 0
+column_registry: "registries/annex-columns-v0"
 include_columns:
   - loan_id
   - current_balance
@@ -128,6 +130,7 @@ equivalence:
 |-------|------|-------------|
 | `profile_id` | string | Unique identifier with version suffix |
 | `profile_version` | integer | Monotonically increasing version number |
+| `column_registry` | string | Optional canon registry path used to normalize raw headers to canonical column IDs before scoping |
 | `include_columns` | string[] | Columns to include in analysis (others ignored) |
 | `key` | string[] | Column(s) used for row alignment/joining |
 | `equivalence.order` | string | `"order-invariant"` or `"order-sensitive"` |
@@ -161,6 +164,7 @@ profile draft init loan_tape.csv --out loan_profile.yaml
 ```
 
 Auto-populates `include_columns` from the header. You edit the draft to remove unwanted columns and set the key.
+When headers vary across providers, add `--column-registry registries/annex-columns-v0` to write canonical column IDs into the draft instead of raw header spellings.
 
 ### `profile suggest-key`
 
@@ -359,7 +363,7 @@ Ensure the profile file is committed and the path is correct. Profiles are plain
 | **CSV only** | v0 profiles scope CSV/TSV columns; XLSX sheet/range scoping is deferred |
 | **Single key type** | Composite keys supported, but only column-based — no expression keys |
 | **No auto-update** | Profile doesn't auto-detect schema changes — use `lint` to catch drift |
-| **No profile registry** | Profiles are local files — centralized registry is deferred |
+| **Registry paths are local** | Profiles can reference local column registries, but registry distribution/resolution is still path-based in v0 |
 | **Network publish deferred** | `push`/`pull` data-fabric wrappers are deferred in v0.1 |
 | **Pre-release** | Implementation in progress — spec is complete in the epistemic spine plan |
 

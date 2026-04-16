@@ -23,6 +23,9 @@
 ```bash
 # Create a draft profile from a real dataset
 profile draft init tape.csv --out loan_tape.draft.yaml
+# Optional: canonicalize heterogeneous headers through a column registry
+profile draft init tape.csv --out loan_tape.draft.yaml \
+  --column-registry registries/annex-columns-v0
 
 # Validate and lint against a dataset
 profile validate loan_tape.draft.yaml
@@ -50,6 +53,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 | `src/lib.rs` | Full dispatch (calls handler + output layer) |
 | `src/cli/` | Argument parsing (clap derive), exit codes |
 | `src/schema/` | Profile struct, schema validation, canonicalization |
+| `src/schema/registry.rs` | Column registry loading + header canonicalization helpers |
 | `src/draft/` | `draft new` (blank template) and `draft init` (from CSV) |
 | `src/freeze/` | Draft → frozen transition, SHA256 |
 | `src/lint/` | Profile vs dataset column checking |
@@ -90,7 +94,7 @@ Subcommand handlers return `Result<serde_json::Value, RefusalPayload>` — they 
 ### 1. Canonical form determinism
 
 Frozen profile SHA256 must be computed from a deterministic canonical form:
-1. Field order: `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `hashing`, `equivalence`, `key`, `include_columns`
+1. Field order: `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `hashing`, `equivalence`, `key`, `include_columns`
 2. Block-style YAML only (no flow sequences/mappings)
 3. Exactly one trailing `\n`, no comments, no blank lines, no document markers
 4. `profile_sha256` excluded from the canonical form (it's computed from it)
@@ -153,6 +157,7 @@ cargo test
 ### Test Coverage Areas
 
 - Draft new/init template generation and header-driven drafting
+- Registry-backed header canonicalization for draft/lint/stats paths
 - Validate/lint schema and column checking paths
 - Stats/suggest-key deterministic output and ranking
 - Freeze canonicalization, default-fill, SHA256 round-trip

@@ -238,3 +238,47 @@ fn freeze_json_refuses_existing_output_path_with_e_io() {
         Some("E_IO")
     );
 }
+
+#[test]
+fn freeze_preserves_column_registry_when_present() {
+    let workspace = temp_workspace();
+    let draft_path = workspace.path().join("draft.yaml");
+    let out_path = workspace.path().join("frozen.yaml");
+    fs::write(
+        &draft_path,
+        "\
+schema_version: 1
+status: draft
+format: csv
+column_registry: registries/annex_columns_v0
+equivalence:
+  float_decimals: 6
+  trim_strings: true
+key:
+  - loan_id_number
+include_columns:
+  - loan_id_number
+  - current_balance
+",
+    )
+    .expect("draft fixture write should succeed");
+
+    let assert = profile_cmd()
+        .arg("--no-witness")
+        .arg("freeze")
+        .arg(&draft_path)
+        .arg("--family")
+        .arg("csv.loan_tape.registry")
+        .arg("--version")
+        .arg("0")
+        .arg("--out")
+        .arg(&out_path)
+        .assert();
+    common::assert_success_exit!(assert);
+
+    let content = fs::read_to_string(&out_path).expect("frozen profile should be readable");
+    assert!(
+        content.contains("column_registry: registries/annex_columns_v0"),
+        "expected frozen profile to retain column_registry field"
+    );
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "input": "Loan Number",
+    "canonical_id": "loan_id_number",
+    "canonical_type": "column_name",
+    "rule_id": "ANNEX_COLUMN_ALIAS"
+  },
+  {
+    "input": "Loan ID Number",
+    "canonical_id": "loan_id_number",
+    "canonical_type": "column_name",
+    "rule_id": "ANNEX_COLUMN_ALIAS"
+  },
+  {
+    "input": "Current Balance",
+    "canonical_id": "current_balance",
+    "canonical_type": "column_name",
+    "rule_id": "ANNEX_COLUMN_ALIAS"
+  },
+  {
+    "input": "Note Rate",
+    "canonical_id": "note_rate",
+    "canonical_type": "column_name",
+    "rule_id": "ANNEX_COLUMN_ALIAS"
+  },
+  {
+    "input": "General Property Type",
+    "canonical_id": "general_property_type",
+    "canonical_type": "column_name",
+    "rule_id": "ANNEX_COLUMN_ALIAS"
+  },
+  {
+    "input": "Detailed Property Type",
+    "canonical_id": "detailed_property_type",
+    "canonical_type": "column_name",
+    "rule_id": "ANNEX_COLUMN_ALIAS"
+  }
+]

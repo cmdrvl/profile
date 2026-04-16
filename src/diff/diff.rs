@@ -45,6 +45,14 @@ fn compare_profiles(a: &Profile, b: &Profile) -> Vec<ProfileDifference> {
         });
     }
 
+    if a.column_registry != b.column_registry {
+        differences.push(ProfileDifference {
+            field: "column_registry".to_string(),
+            a_value: json!(a.column_registry),
+            b_value: json!(b.column_registry),
+        });
+    }
+
     // Compare hashing
     if a.hashing != b.hashing {
         differences.push(ProfileDifference {

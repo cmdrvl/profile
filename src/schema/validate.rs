@@ -20,6 +20,17 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
         return Err(invalid_schema("format", "must be csv"));
     }
 
+    if profile
+        .column_registry
+        .as_deref()
+        .is_some_and(|registry| registry.trim().is_empty())
+    {
+        return Err(invalid_schema(
+            "column_registry",
+            "must be a non-empty path when set",
+        ));
+    }
+
     if profile.key.iter().any(|column| column.trim().is_empty()) {
         return Err(invalid_schema("key", "columns must be non-empty strings"));
     }

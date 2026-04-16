@@ -50,6 +50,11 @@ pub fn generate_profile_schema() -> Value {
                 "enum": ["csv"],
                 "description": "Dataset format (only CSV supported in v0.1)"
             },
+            "column_registry": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional canon registry path used to normalize dataset headers to canonical column IDs before profile scoping"
+            },
             "hashing": {
                 "type": "object",
                 "properties": {

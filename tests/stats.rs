@@ -1,6 +1,11 @@
 mod common;
 
-use common::{assert_json_envelope_shape, fixture_path, parse_stdout_json, profile_cmd};
+use std::fs;
+
+use common::{
+    assert_json_envelope_shape, copy_fixture, fixture_path, parse_stdout_json, profile_cmd,
+    temp_workspace,
+};
 
 #[test]
 fn stats_json_is_deterministic_for_full_dataset() {
@@ -176,5 +181,67 @@ fn stats_json_refuses_header_only_dataset_with_e_empty() {
             .and_then(|d| d.get("reason"))
             .and_then(|v| v.as_str()),
         Some("no data rows")
+    );
+}
+
+#[test]
+fn stats_json_uses_canonical_profile_columns_via_registry() {
+    let workspace = temp_workspace();
+    let registry_dir = workspace.path().join("registries").join("annex_columns_v0");
+    copy_fixture(
+        "registries/annex_columns_v0/registry.json",
+        registry_dir.join("registry.json"),
+    );
+    copy_fixture(
+        "registries/annex_columns_v0/aliases.json",
+        registry_dir.join("aliases.json"),
+    );
+
+    let profile_path = workspace.path().join("profile.yaml");
+    fs::write(
+        &profile_path,
+        "\
+schema_version: 1
+status: draft
+format: csv
+column_registry: registries/annex_columns_v0
+key:
+  - loan_id_number
+include_columns:
+  - loan_id_number
+  - current_balance
+  - note_rate
+",
+    )
+    .expect("profile fixture write should succeed");
+
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("stats")
+        .arg(fixture_path("datasets/valid/loan_tape_alt_headers.csv"))
+        .arg("--profile")
+        .arg(&profile_path)
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    let columns = envelope
+        .get("result")
+        .and_then(|r| r.get("columns"))
+        .and_then(|v| v.as_array())
+        .expect("stats result should contain columns array");
+    let names = columns
+        .iter()
+        .map(|column| {
+            column
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec!["loan_id_number", "current_balance", "note_rate"]
     );
 }

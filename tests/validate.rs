@@ -1,5 +1,7 @@
 mod common;
 
+use std::fs;
+
 use common::{assert_json_envelope_shape, fixture_path, parse_stdout_json, profile_cmd};
 use predicates::prelude::predicate;
 
@@ -122,4 +124,27 @@ fn validate_human_output_contracts_for_success_and_refusal() {
         .code(common::EXIT_REFUSAL)
         .stderr(predicate::str::contains("Error:"))
         .stderr(predicate::str::contains("Required field not declared"));
+}
+
+#[test]
+fn validate_accepts_profile_with_column_registry() {
+    let workspace = common::temp_workspace();
+    let profile_path = workspace.path().join("with-registry.yaml");
+    fs::write(
+        &profile_path,
+        "\
+schema_version: 1
+status: draft
+format: csv
+column_registry: registries/annex_columns_v0
+key:
+  - loan_id_number
+include_columns:
+  - loan_id_number
+",
+    )
+    .expect("profile fixture write should succeed");
+
+    let assert = profile_cmd().arg("validate").arg(&profile_path).assert();
+    common::assert_success_exit!(assert);
 }

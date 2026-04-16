@@ -91,6 +91,7 @@ profile_family: csv.loan_tape.diff
 profile_sha256: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 status: frozen
 format: csv
+column_registry: registries/annex_columns_v0
 key:
   - balance
 include_columns:
@@ -140,7 +141,13 @@ include_columns:
         .collect::<Vec<_>>();
     assert_eq!(
         fields,
-        vec!["hashing", "equivalence", "key", "include_columns"]
+        vec![
+            "column_registry",
+            "hashing",
+            "equivalence",
+            "key",
+            "include_columns"
+        ]
     );
     assert!(
         !fields.contains(&"profile_id"),

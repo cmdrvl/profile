@@ -108,6 +108,10 @@ pub struct DraftInitArgs {
     /// Key column name, or "auto" for automatic detection
     #[arg(long)]
     pub key: Option<String>,
+
+    /// Canon registry directory used to normalize headers to canonical column IDs
+    #[arg(long)]
+    pub column_registry: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]

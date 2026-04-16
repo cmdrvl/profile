@@ -17,6 +17,8 @@ struct CanonicalProfile<'a> {
     status: ProfileStatus,
     format: ProfileFormat,
     #[serde(skip_serializing_if = "Option::is_none")]
+    column_registry: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hashing: Option<CanonicalHashing<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     equivalence: Option<CanonicalEquivalence>,
@@ -74,6 +76,7 @@ impl<'a> From<&'a Profile> for CanonicalProfile<'a> {
             profile_family: profile.profile_family.as_deref(),
             status: profile.status,
             format: profile.format,
+            column_registry: profile.column_registry.as_deref(),
             hashing: profile.hashing.as_ref().map(CanonicalHashing::from),
             equivalence: profile.equivalence.as_ref().map(CanonicalEquivalence::from),
             key: Some(profile.key.as_slice()),
