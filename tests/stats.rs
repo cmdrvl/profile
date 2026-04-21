@@ -66,6 +66,56 @@ fn stats_json_is_deterministic_for_full_dataset() {
 }
 
 #[test]
+fn stats_json_redacts_examples_by_default() {
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("stats")
+        .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    let columns = envelope
+        .get("result")
+        .and_then(|r| r.get("columns"))
+        .and_then(|v| v.as_array())
+        .expect("stats result should contain columns array");
+    assert!(
+        columns.iter().all(|column| column.get("example").is_none()),
+        "stats should omit example fields unless --explicit is set"
+    );
+}
+
+#[test]
+fn stats_json_includes_examples_when_explicit() {
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("--explicit")
+        .arg("stats")
+        .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    let columns = envelope
+        .get("result")
+        .and_then(|r| r.get("columns"))
+        .and_then(|v| v.as_array())
+        .expect("stats result should contain columns array");
+    let loan_id = columns
+        .iter()
+        .find(|column| column.get("name").and_then(|v| v.as_str()) == Some("loan_id"))
+        .expect("stats result should contain loan_id column");
+
+    assert_eq!(
+        loan_id.get("example").and_then(|value| value.as_str()),
+        Some("LN-0001")
+    );
+}
+
+#[test]
 fn stats_json_respects_profile_scoping_and_column_order() {
     let assert = profile_cmd()
         .arg("--json")

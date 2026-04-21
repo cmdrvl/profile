@@ -188,11 +188,16 @@ Catches: missing columns, non-unique keys, type mismatches, schema drift.
 
 ### `profile stats`
 
-Surface structural statistics about a dataset:
+Surface structural statistics about a dataset. Per-column example values are redacted by
+default; JSON output only includes `example` fields when the global `--explicit` flag is
+set:
 
 ```bash
 profile stats loan_tape.csv
 # rows: 1,247 | columns: 42 | nulls: 3.2% | key candidates: loan_id, property_id
+
+profile --explicit --json stats loan_tape.csv
+# includes per-column example values
 ```
 
 ### `profile freeze`

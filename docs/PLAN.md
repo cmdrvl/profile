@@ -151,8 +151,8 @@ profile validate <FILE> [--json]
 profile lint <PROFILE> --against <DATASET> [--json]
   (checks schema validity, then checks referenced columns/key exist in the dataset after optional registry-backed header canonicalization)
 
-profile stats <DATASET> [--profile <FILE>] [--json]
-  (reports column counts, null rates, and key viability; deterministic ordering; when a profile carries column_registry, profile columns are resolved against canonicalized headers)
+profile [--explicit] stats <DATASET> [--profile <FILE>] [--json]
+  (reports column counts, null rates, and key viability; deterministic ordering; example values are omitted unless --explicit is set; when a profile carries column_registry, profile columns are resolved against canonicalized headers)
 
 profile suggest-key <DATASET> [--top <N>] [--json]
   (ranks candidates by uniqueness, null rate, and stability signals; deterministic)
@@ -265,12 +265,15 @@ lint (ISSUES_FOUND):
       { "kind": "missing_key", "column": "loan_id", "severity": "error" }
   ] }
 
-stats (SUCCESS):
+stats (SUCCESS, default redacted mode):
   { "row_count": 10432,
     "columns": [
-      { "name": "loan_id", "null_rate": 0.0, "uniqueness": 1.0, "example": "LN-001" },
-      { "name": "balance", "null_rate": 0.02, "uniqueness": 0.87, "example": "250000.00" }
+      { "name": "loan_id", "null_rate": 0.0, "uniqueness": 1.0 },
+      { "name": "balance", "null_rate": 0.02, "uniqueness": 0.87 }
   ] }
+
+stats with profile --explicit adds per-column examples:
+  { "name": "loan_id", "null_rate": 0.0, "uniqueness": 1.0, "example": "LN-001" }
 
 suggest-key (SUCCESS):
   { "candidates": [
