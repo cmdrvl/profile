@@ -59,11 +59,8 @@ jobs:
         run: |
           python3 - <<'PYEOF'
           import pathlib
-          import textwrap
 
           version = "${{ steps.release.outputs.tag }}"
-          bare = "${{ steps.release.outputs.bare_version }}"
-
           sums = {}
           for line in pathlib.Path("SHA256SUMS").read_text().strip().splitlines():
               digest, name = line.split(maxsplit=1)
@@ -89,7 +86,7 @@ jobs:
               if os_block != current_os:
                   if current_os is not None:
                       blocks.append("  end")
-                  blocks.append(f"\n  {os_block} do")
+                  blocks.append(f"  {os_block} do")
                   current_os = os_block
               blocks.append(f"    {arch_block} do")
               blocks.append(f'      url "https://github.com/cmdrvl/profile/releases/download/{version}/{asset}"')
@@ -97,27 +94,29 @@ jobs:
               blocks.append("    end")
           blocks.append("  end")
 
-          formula = f'''# typed: false
-          # frozen_string_literal: true
+          formula_lines = [
+              "# typed: false",
+              "# frozen_string_literal: true",
+              "",
+              "class Profile < Formula",
+              '  desc "Create, validate, and freeze column-scoping profiles"',
+              '  homepage "https://github.com/cmdrvl/profile"',
+              '  license "MIT"',
+              "",
+              *blocks,
+              "",
+              "  def install",
+              '    bin.install "profile"',
+              "  end",
+              "",
+              "  test do",
+              '    assert_match version.to_s, shell_output("#{bin}/profile --version")',
+              "  end",
+              "end",
+              "",
+          ]
 
-          class Profile < Formula
-            desc "Create, validate, and freeze column-scoping profiles"
-            homepage "https://github.com/cmdrvl/profile"
-            version "{bare}"
-            license "MIT"
-          {"".join(chr(10) + line for line in blocks)}
-
-            def install
-              bin.install "profile"
-            end
-
-            test do
-              assert_match version.to_s, shell_output("#{{bin}}/profile --version")
-            end
-          end
-          '''
-
-          pathlib.Path("profile.rb").write_text(textwrap.dedent(formula).lstrip())
+          pathlib.Path("profile.rb").write_text("\n".join(formula_lines))
           PYEOF
 
       - name: Validate tap token
