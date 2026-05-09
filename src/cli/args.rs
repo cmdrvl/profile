@@ -36,6 +36,8 @@ pub struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
+    /// Inspect the profile CLI contract without reading profile or dataset files
+    Doctor(DoctorArgs),
     /// Create draft profiles from templates or dataset headers
     Draft(DraftArgs),
     /// Validate a profile against the schema
@@ -60,6 +62,26 @@ pub enum Command {
     Pull(PullArgs),
     /// Query the witness ledger
     Witness(WitnessArgs),
+}
+
+#[derive(Debug, Clone, Args, Default)]
+pub struct DoctorArgs {
+    /// Emit a machine-readable triage report for headless agents
+    #[arg(long)]
+    pub robot_triage: bool,
+
+    #[command(subcommand)]
+    pub command: Option<DoctorCommand>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DoctorCommand {
+    /// Report read-only health and boundary checks
+    Health,
+    /// Report the supported doctor contract and domain boundaries
+    Capabilities,
+    /// Print concise usage guidance for headless agents
+    RobotDocs,
 }
 
 #[derive(Debug, Clone, Args)]

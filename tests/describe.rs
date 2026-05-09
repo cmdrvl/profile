@@ -23,7 +23,7 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
             .get("subcommands")
             .and_then(|v| v.as_array())
             .map(Vec::len),
-        Some(13)
+        Some(14)
     );
 }
 

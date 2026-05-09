@@ -118,6 +118,7 @@ The list below shows the full interface roadmap. v0.1 ships the subset in [Scope
 
 ```
 Commands:
+  doctor                 Read-only diagnostic surface for headless agents
   draft new              Create a new draft profile (blank template)
   draft init <DATASET>   Create a draft profile from a real dataset (CSV header-driven)
   validate <FILE>        Validate a profile against the schema
@@ -178,6 +179,10 @@ profile push <FROZEN_PROFILE>
 
 profile pull <PROFILE_ID> --out <DIR>
   (deferred in v0.1; fetches from data-fabric via thin HTTP wrapper)
+
+profile doctor <health|capabilities|robot-docs> [--json]
+profile doctor --robot-triage
+  (read-only diagnostic surface; does not read profile files, datasets, column registries, stdin, witness ledgers, or network endpoints; does not write profile YAML, witness records, .doctor artifacts, or remote data)
 ```
 
 ### Common flags (all subcommands)
@@ -201,6 +206,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 
 | Subcommand | Output mode | `--json` |
 |------------|-------------|----------|
+| `doctor` | Read-only diagnostic report | Envelope with doctor result; `--robot-triage` also emits machine-readable JSON without requiring `--json` |
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
@@ -625,8 +631,9 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
  2. If --describe: print operator.json, exit 0 (works without subcommand since command is Option<Command>)
  3. If --schema (when implemented): print JSON Schema, exit 0 (also works without subcommand)
  4. If command is None: exit 2 (no subcommand provided and no early-exit flag matched)
- 5. If witness subcommand: dispatch to witness query/last/count, exit
- 6. Dispatch to subcommand handler:
+ 5. If doctor subcommand: return read-only health/capabilities/robot-docs/triage before profile, dataset, registry, witness, or network handlers
+ 6. If witness subcommand: dispatch to witness query/last/count, exit
+ 7. Dispatch to subcommand handler:
 
     draft new:
       a. Build blank template for --format
@@ -1001,6 +1008,7 @@ fn main() -> std::process::ExitCode {
   "options": [],
 
   "subcommands": [
+    { "name": "doctor", "description": "Read-only diagnostic surface for headless agents" },
     { "name": "draft new", "description": "Create blank draft template" },
     { "name": "draft init", "description": "Create draft from dataset header" },
     { "name": "validate", "description": "Validate profile against schema" },

@@ -26,3 +26,6 @@ target
 
 # ntm runtime state
 .ntm/
+
+# Doctor run artifacts stay local when future fix mode exists
+.doctor/

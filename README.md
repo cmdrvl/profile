@@ -300,6 +300,23 @@ rvl old.csv new.csv --profile loan_profile.yaml --json
 | `1` | `ISSUES_FOUND` | Lint/diff found issues or differences |
 | `2` | `REFUSAL` | Invalid input, schema violation, parse/IO refusal, or CLI error |
 
+### Doctor
+
+`profile doctor` is a read-only diagnostic surface for headless agents. It does
+not read profile files, datasets, column registries, stdin, witness ledgers, or
+network endpoints. It does not write profile YAML, witness records, `.doctor/`
+artifacts, or remote data.
+
+```bash
+profile doctor health --json
+profile doctor capabilities --json
+profile doctor --robot-triage
+profile doctor robot-docs
+```
+
+`doctor --json` responses use the same `profile.v0` output envelope as the rest
+of the CLI. There is no `doctor --fix` mode.
+
 ### Refusal codes
 
 `E_INVALID_SCHEMA`, `E_MISSING_FIELD`, `E_BAD_VERSION`, `E_ALREADY_FROZEN`, `E_IO`, `E_CSV_PARSE`, `E_EMPTY`, `E_COLUMN_NOT_FOUND`

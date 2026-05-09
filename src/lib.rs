@@ -3,13 +3,16 @@
 use clap::{Parser, error::ErrorKind};
 use serde_json::Value;
 
-use crate::cli::args::{Cli, Command, DraftArgs, DraftCommand, WitnessArgs, WitnessCommand};
+use crate::cli::args::{
+    Cli, Command, DoctorArgs, DoctorCommand, DraftArgs, DraftCommand, WitnessArgs, WitnessCommand,
+};
 use crate::cli::exit::{EXIT_REFUSAL, EXIT_SUCCESS};
 use crate::output::json::CommandOutput;
 use crate::refusal::RefusalPayload;
 
 pub mod cli;
 pub mod diff;
+pub mod doctor;
 pub mod draft;
 pub mod freeze;
 pub mod lint;
@@ -70,6 +73,7 @@ pub fn run() -> u8 {
 
 fn dispatch(command: &Command, no_witness: bool, explicit: bool) -> HandlerResult {
     match command {
+        Command::Doctor(args) => doctor::run(args).map(CommandOutput::success),
         Command::Draft(DraftArgs { command }) => match command {
             DraftCommand::New(args) => {
                 draft::new::run(args, no_witness).map(CommandOutput::success)
@@ -104,6 +108,18 @@ fn dispatch(command: &Command, no_witness: bool, explicit: bool) -> HandlerResul
 
 fn command_name(command: &Command) -> &'static str {
     match command {
+        Command::Doctor(DoctorArgs {
+            robot_triage: true, ..
+        }) => "doctor triage",
+        Command::Doctor(DoctorArgs {
+            command: Some(DoctorCommand::Capabilities),
+            ..
+        }) => "doctor capabilities",
+        Command::Doctor(DoctorArgs {
+            command: Some(DoctorCommand::RobotDocs),
+            ..
+        }) => "doctor robot-docs",
+        Command::Doctor(_) => "doctor health",
         Command::Draft(DraftArgs { command }) => match command {
             DraftCommand::New(_) => "draft new",
             DraftCommand::Init(_) => "draft init",

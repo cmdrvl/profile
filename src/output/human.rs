@@ -33,6 +33,7 @@ fn emit_human_value(subcommand: &str, value: &Value) {
         "diff" => emit_diff_result(value),
         "push" => emit_push_result(value),
         "pull" => emit_pull_result(value),
+        "doctor robot-docs" => emit_doctor_robot_docs(value),
         "describe" => emit_describe_result(value),
         "schema" => emit_schema_result(value),
         _ => {
@@ -42,6 +43,17 @@ fn emit_human_value(subcommand: &str, value: &Value) {
                 Err(_) => println!("{}", value),
             }
         }
+    }
+}
+
+fn emit_doctor_robot_docs(value: &Value) {
+    if let Some(text) = value.get("text").and_then(|entry| entry.as_str()) {
+        println!("{}", text);
+    } else {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(value).unwrap_or_default()
+        );
     }
 }
 
