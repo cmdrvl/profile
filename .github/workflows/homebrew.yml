@@ -1,8 +1,10 @@
 name: Update Homebrew Formula
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release Build Matrix"]
+    types: [completed]
+    branches: ["main"]
   workflow_dispatch:
     inputs:
       version:
@@ -16,6 +18,7 @@ permissions:
 jobs:
   update-homebrew:
     name: Update Homebrew tap
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,11 +52,16 @@ jobs:
         run: |
           set -euo pipefail
           url="https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/SHA256SUMS"
-          if ! curl -fsSL "$url" -o SHA256SUMS; then
-            echo "::error::Failed to download SHA256SUMS from release ${{ steps.release.outputs.tag }}."
-            echo "Confirm release artifacts are published, then rerun this workflow."
-            exit 1
-          fi
+          for attempt in {1..10}; do
+            if curl -fsSL "$url" -o SHA256SUMS; then
+              exit 0
+            fi
+            echo "Attempt ${attempt}/10: SHA256SUMS for ${{ steps.release.outputs.tag }} not yet available; retrying in 15s..."
+            sleep 15
+          done
+          echo "::error::Failed to download SHA256SUMS from release ${{ steps.release.outputs.tag }} after retries."
+          echo "Confirm release artifacts are published, then rerun this workflow."
+          exit 1
 
       - name: Generate formula
         run: |
