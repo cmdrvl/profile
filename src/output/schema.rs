@@ -55,6 +55,70 @@ pub fn generate_profile_schema() -> Value {
                 "minLength": 1,
                 "description": "Optional canon registry path used to normalize dataset headers to canonical column IDs before profile scoping"
             },
+            "fingerprint_ref": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional upstream fingerprint ID whose peek output informed pre_parse directives"
+            },
+            "pre_parse": {
+                "type": "object",
+                "description": "Optional witnessed slicing directives for pre-parser cleanup before normal profile operations",
+                "properties": {
+                    "expected_shape": {
+                        "type": "object",
+                        "properties": {
+                            "modal_column_count": {"type": "integer", "minimum": 1},
+                            "first_data_row": {"type": "integer", "minimum": 1},
+                            "header_rows_pattern": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                            }
+                        },
+                        "additionalProperties": false
+                    },
+                    "slice": {
+                        "type": "object",
+                        "properties": {
+                            "mode": {
+                                "type": "string",
+                                "enum": ["preamble_skip", "multi_row_header", "preamble_with_units"]
+                            },
+                            "skip_rows": {"type": "integer", "minimum": 1},
+                            "header_at_row": {"type": "integer", "minimum": 1},
+                            "header_rows": {
+                                "type": "array",
+                                "items": {"type": "integer", "minimum": 1}
+                            },
+                            "header_merge": {
+                                "type": "object",
+                                "properties": {
+                                    "strategy": {
+                                        "type": "string",
+                                        "enum": ["ffill_concat", "concat_only", "first_non_empty"]
+                                    },
+                                    "separator": {"type": "string", "minLength": 1},
+                                    "empty_placeholder": {"type": "string", "minLength": 1}
+                                },
+                                "required": ["strategy"],
+                                "additionalProperties": false
+                            },
+                            "data_starts_at": {"type": "integer", "minimum": 1},
+                            "delimiter": {"type": "string", "minLength": 1, "maxLength": 1},
+                            "encoding": {"type": "string"},
+                            "preamble_capture": {"type": "boolean"},
+                            "unit_rows_capture": {"type": "boolean"},
+                            "unit_rows": {
+                                "type": "array",
+                                "items": {"type": "integer", "minimum": 1}
+                            }
+                        },
+                        "required": ["mode"],
+                        "additionalProperties": false
+                    }
+                },
+                "required": ["slice"],
+                "additionalProperties": false
+            },
             "hashing": {
                 "type": "object",
                 "properties": {

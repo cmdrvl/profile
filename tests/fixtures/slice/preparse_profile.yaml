@@ -1,0 +1,18 @@
+schema_version: 1
+status: draft
+format: csv
+pre_parse:
+  expected_shape:
+    modal_column_count: 4
+    first_data_row: 5
+  slice:
+    mode: preamble_skip
+    skip_rows: 3
+    header_at_row: 4
+    data_starts_at: 5
+    preamble_capture: true
+include_columns:
+  - Account ID
+  - Account Name
+  - Amount
+  - Closed Date

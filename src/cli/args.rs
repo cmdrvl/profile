@@ -44,6 +44,8 @@ pub enum Command {
     Validate(ValidateArgs),
     /// Validate a profile and check column presence against a dataset
     Lint(LintArgs),
+    /// Apply witnessed pre-parse slicing to a CSV-like dataset
+    Slice(SliceArgs),
     /// Show structural statistics for a dataset
     Stats(StatsArgs),
     /// Rank candidate key columns by uniqueness
@@ -134,6 +136,10 @@ pub struct DraftInitArgs {
     /// Canon registry directory used to normalize headers to canonical column IDs
     #[arg(long)]
     pub column_registry: Option<PathBuf>,
+
+    /// JSON output from `fingerprint peek --suggest` used to seed pre_parse directives
+    #[arg(long = "from-peek")]
+    pub from_peek: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -150,6 +156,84 @@ pub struct LintArgs {
     /// Path to the dataset to check columns against
     #[arg(long)]
     pub against: PathBuf,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct SliceArgs {
+    /// Path to the dataset to slice
+    pub file: PathBuf,
+
+    /// Frozen or draft profile ID/path with pre_parse directives
+    #[arg(long)]
+    pub profile: Option<String>,
+
+    /// Explicit profile YAML path with pre_parse directives
+    #[arg(long = "profile-path")]
+    pub profile_path: Option<PathBuf>,
+
+    /// Slice mode for ad-hoc directives
+    #[arg(long, value_enum)]
+    pub mode: Option<SliceModeArg>,
+
+    /// Number of leading rows to skip before the header
+    #[arg(long = "skip-rows")]
+    pub skip_rows: Option<usize>,
+
+    /// 1-indexed physical row containing the header
+    #[arg(long = "header-at-row")]
+    pub header_at_row: Option<usize>,
+
+    /// Comma-separated 1-indexed physical header rows for multi-row headers
+    #[arg(long = "header-rows")]
+    pub header_rows: Option<String>,
+
+    /// Header merge strategy for multi-row headers
+    #[arg(long = "header-merge", value_enum)]
+    pub header_merge: Option<HeaderMergeStrategyArg>,
+
+    /// Separator used when concatenating header levels
+    #[arg(long = "header-merge-sep", default_value = ".")]
+    pub header_merge_sep: String,
+
+    /// Comma-separated 1-indexed physical unit rows to capture in the manifest
+    #[arg(long = "unit-rows")]
+    pub unit_rows: Option<String>,
+
+    /// 1-indexed physical row where data starts
+    #[arg(long = "data-starts-at")]
+    pub data_starts_at: Option<usize>,
+
+    /// One-character delimiter override
+    #[arg(long)]
+    pub delimiter: Option<String>,
+
+    /// Encoding label. Only utf-8 is supported.
+    #[arg(long)]
+    pub encoding: Option<String>,
+
+    /// Output CSV path. If omitted in human mode, clean CSV is written to stdout.
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+
+    /// Optional JSON manifest path for preamble, units, and lineage metadata
+    #[arg(long = "emit-manifest")]
+    pub emit_manifest: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "snake_case")]
+pub enum SliceModeArg {
+    PreambleSkip,
+    MultiRowHeader,
+    PreambleWithUnits,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "snake_case")]
+pub enum HeaderMergeStrategyArg {
+    FfillConcat,
+    ConcatOnly,
+    FirstNonEmpty,
 }
 
 #[derive(Debug, Clone, Args)]

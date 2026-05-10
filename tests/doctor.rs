@@ -89,6 +89,25 @@ fn doctor_capabilities_json_lists_agent_surface() {
             .and_then(|entry| entry.as_bool()),
         Some(false)
     );
+
+    let detector_ids = envelope
+        .get("result")
+        .and_then(|result| result.get("detectors"))
+        .and_then(|entry| entry.as_array())
+        .expect("capabilities should list detector contracts")
+        .iter()
+        .filter_map(|detector| detector.get("id").and_then(|entry| entry.as_str()))
+        .collect::<Vec<_>>();
+    for expected in [
+        "invalid_profile_schema",
+        "dataset_column_mismatch",
+        "already_frozen_profile",
+        "witness_append_warning",
+        "remote_push_transport_failure",
+        "remote_pull_transport_failure",
+    ] {
+        assert!(detector_ids.contains(&expected));
+    }
 }
 
 #[test]

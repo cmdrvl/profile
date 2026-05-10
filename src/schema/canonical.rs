@@ -2,7 +2,9 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::refusal::RefusalPayload;
-use crate::schema::profile::{Equivalence, Hashing, Profile, ProfileFormat, ProfileStatus};
+use crate::schema::profile::{
+    Equivalence, Hashing, PreParse, Profile, ProfileFormat, ProfileStatus,
+};
 use crate::schema::validate::{ValidationMode, validate_profile};
 
 #[derive(Debug, Clone, Serialize)]
@@ -18,6 +20,10 @@ struct CanonicalProfile<'a> {
     format: ProfileFormat,
     #[serde(skip_serializing_if = "Option::is_none")]
     column_registry: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fingerprint_ref: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pre_parse: Option<&'a PreParse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     hashing: Option<CanonicalHashing<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,6 +83,8 @@ impl<'a> From<&'a Profile> for CanonicalProfile<'a> {
             status: profile.status,
             format: profile.format,
             column_registry: profile.column_registry.as_deref(),
+            fingerprint_ref: profile.fingerprint_ref.as_deref(),
+            pre_parse: profile.pre_parse.as_ref(),
             hashing: profile.hashing.as_ref().map(CanonicalHashing::from),
             equivalence: profile.equivalence.as_ref().map(CanonicalEquivalence::from),
             key: Some(profile.key.as_slice()),

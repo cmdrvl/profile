@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "profile",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Creates, validates, and freezes column-scoping profiles for report tools",
   "repository": "https://github.com/cmdrvl/profile",
   "license": "MIT",
@@ -31,6 +31,7 @@
     { "name": "draft init", "description": "Create draft from dataset header" },
     { "name": "validate", "description": "Validate profile against schema" },
     { "name": "lint", "description": "Validate + check against dataset" },
+    { "name": "slice", "description": "Apply profile or ad-hoc pre_parse directives to emit clean CSV plus optional manifest" },
     { "name": "stats", "description": "Deterministic structural stats" },
     { "name": "suggest-key", "description": "Rank candidate key columns" },
     { "name": "freeze", "description": "Freeze draft into immutable profile" },
@@ -61,12 +62,14 @@
 
   "capabilities": {
     "formats": ["csv"],
-    "profile_aware": false,
-    "streaming": false
+    "profile_aware": true,
+    "streaming": false,
+    "pre_parse": true,
+    "slice": true
   },
 
   "pipeline": {
-    "upstream": [],
+    "upstream": ["fingerprint peek"],
     "downstream": ["rvl", "compare", "shape"]
   }
 }

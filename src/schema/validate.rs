@@ -1,5 +1,7 @@
 use crate::refusal::RefusalPayload;
-use crate::schema::profile::{HashAlgorithm, Profile, ProfileStatus};
+use crate::schema::profile::{
+    HashAlgorithm, HeaderMergeStrategy, Profile, ProfileStatus, SliceMode,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationMode {
@@ -30,6 +32,19 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
             "must be a non-empty path when set",
         ));
     }
+
+    if profile
+        .fingerprint_ref
+        .as_deref()
+        .is_some_and(|fingerprint_ref| fingerprint_ref.trim().is_empty())
+    {
+        return Err(invalid_schema(
+            "fingerprint_ref",
+            "must be a non-empty fingerprint ID when set",
+        ));
+    }
+
+    validate_pre_parse(profile)?;
 
     if profile.key.iter().any(|column| column.trim().is_empty()) {
         return Err(invalid_schema("key", "columns must be non-empty strings"));
@@ -120,6 +135,169 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
     }
 
     Ok(())
+}
+
+fn validate_pre_parse(profile: &Profile) -> Result<(), RefusalPayload> {
+    let Some(pre_parse) = profile.pre_parse.as_ref() else {
+        return Ok(());
+    };
+    let slice = &pre_parse.slice;
+
+    if let Some(encoding) = slice.encoding.as_deref()
+        && !encoding.eq_ignore_ascii_case("utf-8")
+        && !encoding.eq_ignore_ascii_case("utf8")
+    {
+        return Err(invalid_schema(
+            "pre_parse.slice.encoding",
+            "only utf-8 is currently supported",
+        ));
+    }
+
+    if let Some(delimiter) = slice.delimiter.as_deref()
+        && delimiter.chars().count() != 1
+    {
+        return Err(invalid_schema(
+            "pre_parse.slice.delimiter",
+            "delimiter must be exactly one character",
+        ));
+    }
+
+    if let Some(skip_rows) = slice.skip_rows
+        && skip_rows == 0
+    {
+        return Err(invalid_schema(
+            "pre_parse.slice.skip_rows",
+            "must be positive when set",
+        ));
+    }
+    if let Some(header_at_row) = slice.header_at_row
+        && header_at_row == 0
+    {
+        return Err(invalid_schema(
+            "pre_parse.slice.header_at_row",
+            "must be positive when set",
+        ));
+    }
+    if let Some(data_starts_at) = slice.data_starts_at
+        && data_starts_at == 0
+    {
+        return Err(invalid_schema(
+            "pre_parse.slice.data_starts_at",
+            "must be positive when set",
+        ));
+    }
+    if slice.header_rows.contains(&0) {
+        return Err(invalid_schema(
+            "pre_parse.slice.header_rows",
+            "rows are 1-indexed and must be positive",
+        ));
+    }
+    if slice.unit_rows.contains(&0) {
+        return Err(invalid_schema(
+            "pre_parse.slice.unit_rows",
+            "rows are 1-indexed and must be positive",
+        ));
+    }
+    if !is_strictly_increasing(&slice.header_rows) {
+        return Err(invalid_schema(
+            "pre_parse.slice.header_rows",
+            "rows must be strictly increasing",
+        ));
+    }
+    if !is_contiguous(&slice.header_rows) {
+        return Err(invalid_schema(
+            "pre_parse.slice.header_rows",
+            "multi-row headers must be contiguous",
+        ));
+    }
+    if !is_strictly_increasing(&slice.unit_rows) {
+        return Err(invalid_schema(
+            "pre_parse.slice.unit_rows",
+            "rows must be strictly increasing",
+        ));
+    }
+
+    if let Some(header_merge) = slice.header_merge.as_ref() {
+        if let Some(separator) = header_merge.separator.as_deref()
+            && separator.is_empty()
+        {
+            return Err(invalid_schema(
+                "pre_parse.slice.header_merge.separator",
+                "must be non-empty when set",
+            ));
+        }
+        match header_merge.strategy {
+            HeaderMergeStrategy::FfillConcat
+            | HeaderMergeStrategy::ConcatOnly
+            | HeaderMergeStrategy::FirstNonEmpty => {}
+        }
+    }
+
+    let last_header_row = slice
+        .header_rows
+        .iter()
+        .copied()
+        .chain(slice.header_at_row)
+        .max();
+    if let (Some(data_starts_at), Some(last_header_row)) = (slice.data_starts_at, last_header_row)
+        && data_starts_at <= last_header_row
+    {
+        return Err(invalid_schema(
+            "pre_parse.slice.data_starts_at",
+            "must be after the header row(s)",
+        ));
+    }
+    if let Some(data_starts_at) = slice.data_starts_at
+        && slice.unit_rows.iter().any(|row| *row >= data_starts_at)
+    {
+        return Err(invalid_schema(
+            "pre_parse.slice.unit_rows",
+            "unit rows must come before data_starts_at",
+        ));
+    }
+
+    match slice.mode {
+        SliceMode::PreambleSkip => {
+            if slice.header_at_row.is_none() && slice.skip_rows.is_none() {
+                return Err(invalid_schema(
+                    "pre_parse.slice.header_at_row",
+                    "preamble_skip requires header_at_row or skip_rows",
+                ));
+            }
+        }
+        SliceMode::MultiRowHeader => {
+            if slice.header_rows.len() < 2 {
+                return Err(invalid_schema(
+                    "pre_parse.slice.header_rows",
+                    "multi_row_header requires at least two header rows",
+                ));
+            }
+        }
+        SliceMode::PreambleWithUnits => {
+            if slice.header_at_row.is_none() {
+                return Err(invalid_schema(
+                    "pre_parse.slice.header_at_row",
+                    "preamble_with_units requires header_at_row",
+                ));
+            }
+            if slice.unit_rows.is_empty() {
+                return Err(invalid_schema(
+                    "pre_parse.slice.unit_rows",
+                    "preamble_with_units requires at least one unit row",
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn is_strictly_increasing(rows: &[usize]) -> bool {
+    rows.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+fn is_contiguous(rows: &[usize]) -> bool {
+    rows.windows(2).all(|pair| pair[0] + 1 == pair[1])
 }
 
 pub fn is_valid_profile_family(family: &str) -> bool {

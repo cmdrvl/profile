@@ -53,6 +53,22 @@ fn compare_profiles(a: &Profile, b: &Profile) -> Vec<ProfileDifference> {
         });
     }
 
+    if a.fingerprint_ref != b.fingerprint_ref {
+        differences.push(ProfileDifference {
+            field: "fingerprint_ref".to_string(),
+            a_value: json!(a.fingerprint_ref),
+            b_value: json!(b.fingerprint_ref),
+        });
+    }
+
+    if a.pre_parse != b.pre_parse {
+        differences.push(ProfileDifference {
+            field: "pre_parse".to_string(),
+            a_value: json!(a.pre_parse),
+            b_value: json!(b.pre_parse),
+        });
+    }
+
     // Compare hashing
     if a.hashing != b.hashing {
         differences.push(ProfileDifference {

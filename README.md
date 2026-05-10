@@ -24,6 +24,7 @@ Your dataset has 42 columns. 15 of them matter for this analysis. The key is `lo
 - **Draft → freeze lifecycle** — `profile draft init` reads a CSV header and generates a starting profile. Edit it. Lint it against real data. When it's right, `profile freeze` makes it immutable and content-addressed.
 - **Key intelligence** — `profile suggest-key` ranks candidate key columns by uniqueness, null rate, and type. No guessing.
 - **Registry-backed header canonicalization** — optional `column_registry` lets the same profile survive heterogeneous raw headers by resolving them to canonical column IDs before scoping.
+- **Witnessed pre-parse slicing** — optional `pre_parse` directives describe how to remove export preambles, merge multi-row headers, and capture units rows before downstream tools read the CSV.
 - **One file, reusable scoping** — `rvl` consumes frozen profiles today, and the same artifact is the intended scoping surface for `shape`, `compare`, and `lock` as those integrations settle. Declare your domain choices once.
 - **Schema drift detection** — `profile lint --against data.csv` catches columns that disappeared, keys that aren't unique, and types that shifted.
 
@@ -102,6 +103,8 @@ Profile doesn't sit in the stream pipeline (vacuum → hashbytes → lock). Inst
 
 `profile` only answers: **which columns matter, what's the key, and how should values be compared?**
 
+It can also perform a narrow lineage-preserving CSV slice when a profile declares `pre_parse` directives. That slice is not a general transform pipeline: it only removes pre-data rows, normalizes headers, optionally captures units/preamble metadata in a manifest, and emits clean CSV for the existing profile workflow.
+
 ---
 
 ## Profile Format
@@ -112,6 +115,12 @@ A profile is a YAML file with a defined schema:
 profile_id: "csv.loan_tape.core.v0"
 profile_version: 0
 column_registry: "registries/annex-columns-v0"
+pre_parse:
+  slice:
+    mode: preamble_skip
+    skip_rows: 3
+    header_at_row: 4
+    data_starts_at: 5
 include_columns:
   - loan_id
   - current_balance
@@ -131,6 +140,8 @@ equivalence:
 | `profile_id` | string | Unique identifier with version suffix |
 | `profile_version` | integer | Monotonically increasing version number |
 | `column_registry` | string | Optional canon registry path used to normalize raw headers to canonical column IDs before scoping |
+| `fingerprint_ref` | string | Optional upstream fingerprint ID used as pre-parse lineage |
+| `pre_parse` | object | Optional CSV slicing directives (`preamble_skip`, `multi_row_header`, `preamble_with_units`) |
 | `include_columns` | string[] | Columns to include in analysis (others ignored) |
 | `key` | string[] | Column(s) used for row alignment/joining |
 | `equivalence.order` | string | `"order-invariant"` or `"order-sensitive"` |
@@ -165,6 +176,12 @@ profile draft init loan_tape.csv --out loan_profile.yaml
 
 Auto-populates `include_columns` from the header. You edit the draft to remove unwanted columns and set the key.
 When headers vary across providers, add `--column-registry registries/annex-columns-v0` to write canonical column IDs into the draft instead of raw header spellings.
+For messy exports, seed pre-parse directives from `fingerprint peek --suggest`:
+
+```bash
+fingerprint peek vendor_export.csv --json --suggest > peek.json
+profile draft init vendor_export.csv --from-peek peek.json --out vendor_profile.yaml
+```
 
 ### `profile suggest-key`
 
@@ -185,6 +202,17 @@ profile lint loan_profile.yaml --against loan_tape.csv
 ```
 
 Catches: missing columns, non-unique keys, type mismatches, schema drift.
+
+### `profile slice`
+
+Apply profile-driven or ad-hoc pre-parse directives to emit clean CSV:
+
+```bash
+profile slice vendor_export.csv --profile-path vendor_profile.yaml --out clean.csv --emit-manifest slice.manifest.json
+profile slice vendor_export.csv --mode multi_row_header --header-rows 2,3 --data-starts-at 4
+```
+
+Without `--out` in human mode, `slice` writes the clean CSV to stdout. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows.
 
 ### `profile stats`
 
@@ -325,7 +353,7 @@ With `--json`, refusals are emitted in the unified output envelope (`outcome=REF
 
 ### Witness behavior
 
-- Witness append is enabled for: `freeze`, `validate`, `lint`, `stats`, `suggest-key`
+- Witness append is enabled for: `freeze`, `validate`, `lint`, `slice`, `stats`, `suggest-key`
 - Witness append is skipped for: `draft new`, `draft init`, `list`, `show`, `diff`, `push`, `pull`
 - `--no-witness` disables witness writes without changing domain outcome or exit semantics
 - Ledger path: `$EPISTEMIC_WITNESS` or `~/.epistemic/witness.jsonl`
@@ -411,7 +439,7 @@ They're ignored. Report tools only analyze columns in `include_columns`. This is
 
 ### How does profile relate to fingerprint?
 
-Fingerprint identifies *what kind* of file something is (template recognition). Profile declares *which columns* to analyze in report tools. They solve different problems and can be used together.
+Fingerprint identifies *what kind* of file something is (template recognition). `fingerprint peek` can also provide row-shape metadata for messy CSV exports. Profile consumes that shape metadata through `draft init --from-peek` and `pre_parse`, then declares which cleaned columns report tools should analyze.
 
 ### Why is key declaration important?
 
@@ -419,7 +447,7 @@ Without a key, report tools like `rvl` can't align rows between two datasets. Th
 
 ### Can profiles be generated programmatically?
 
-Yes. `profile draft init` generates a starting profile from a CSV header. You can also write YAML directly or generate it from any tool.
+Yes. `profile draft init` generates a starting profile from a CSV header, and `--from-peek` can seed `pre_parse` from `fingerprint peek --suggest`. You can also write YAML directly or generate it from any tool.
 
 ---
 

@@ -21,6 +21,7 @@ pub mod output;
 pub mod refusal;
 pub mod resolve;
 pub mod schema;
+pub mod slice;
 pub mod stats;
 pub mod witness;
 
@@ -61,7 +62,7 @@ pub fn run() -> u8 {
         return EXIT_REFUSAL;
     };
 
-    let result = dispatch(command, cli.no_witness, cli.explicit);
+    let result = dispatch(command, cli.no_witness, cli.explicit, cli.json);
     let subcommand = command_name(command);
 
     if cli.json {
@@ -71,7 +72,12 @@ pub fn run() -> u8 {
     }
 }
 
-fn dispatch(command: &Command, no_witness: bool, explicit: bool) -> HandlerResult {
+fn dispatch(
+    command: &Command,
+    no_witness: bool,
+    explicit: bool,
+    json_output: bool,
+) -> HandlerResult {
     match command {
         Command::Doctor(args) => doctor::run(args).map(CommandOutput::success),
         Command::Draft(DraftArgs { command }) => match command {
@@ -84,6 +90,7 @@ fn dispatch(command: &Command, no_witness: bool, explicit: bool) -> HandlerResul
         },
         Command::Validate(args) => lint::validate::run(args, no_witness),
         Command::Lint(args) => lint::lint::run(args, no_witness),
+        Command::Slice(args) => slice::run(args, no_witness, explicit, json_output),
         Command::Stats(args) => stats::stats::run(args, no_witness, explicit),
         Command::SuggestKey(args) => stats::suggest_key::run(args, no_witness),
         Command::Freeze(args) => freeze::freeze::run(args, no_witness),
@@ -126,6 +133,7 @@ fn command_name(command: &Command) -> &'static str {
         },
         Command::Validate(_) => "validate",
         Command::Lint(_) => "lint",
+        Command::Slice(_) => "slice",
         Command::Stats(_) => "stats",
         Command::SuggestKey(_) => "suggest-key",
         Command::Freeze(_) => "freeze",

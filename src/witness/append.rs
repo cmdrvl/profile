@@ -74,7 +74,7 @@ pub fn append_for_command(
 fn witness_enabled_subcommand(subcommand: &str) -> bool {
     matches!(
         subcommand,
-        "freeze" | "validate" | "lint" | "stats" | "suggest-key"
+        "freeze" | "validate" | "lint" | "slice" | "stats" | "suggest-key"
     )
 }
 

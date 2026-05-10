@@ -32,11 +32,11 @@ Report tools (`rvl`, `compare`, `shape`) need to know which columns to analyze. 
 - A template recognizer (that's `fingerprint`)
 - A diff tool (that's `rvl` / `compare`)
 - A comparability gate (that's `shape`)
-- A general-purpose extraction/transform pipeline (it only reads enough dataset structure for profile authoring checks and in-memory header canonicalization; it never rewrites datasets)
+- A general-purpose extraction/transform pipeline. `profile slice` is deliberately narrow: it performs lineage-preserving CSV pre-parse cleanup from explicit directives, not arbitrary transformations.
 - A fingerprint (profiles are YAML config, not Rust assertion crates)
 
 It does not tell you *what the data means*.
-It tells report tools *which columns to look at*, *how to canonicalize raw header aliases when a registry is provided*, and *how to normalize values* for comparison.
+It tells report tools *which columns to look at*, *how to canonicalize raw header aliases when a registry is provided*, *how to normalize values* for comparison, and optionally *how to pre-parse messy CSV exports before the normal column profile applies*.
 
 **Clarification: profiles vs fingerprints.** Both are versioned and reviewable, but they serve different purposes:
 
@@ -45,7 +45,7 @@ It tells report tools *which columns to look at*, *how to canonicalize raw heade
 | **Profile** | `rvl`, `compare`, `shape` | YAML config — "analyze only these columns" | Agents, analysts |
 | **Fingerprint** | `fingerprint` | Rust crate — "does this match this template?" | Engineers, DSL |
 
-The `fingerprint` tool does not use profiles. Profiles are consumed by report tools only.
+The `fingerprint` tool does not use profiles. Profiles are consumed by report tools only. `fingerprint peek --suggest` may provide row-shape metadata that `profile draft init --from-peek` converts into `pre_parse` directives.
 
 ---
 
@@ -123,6 +123,7 @@ Commands:
   draft init <DATASET>   Create a draft profile from a real dataset (CSV header-driven)
   validate <FILE>        Validate a profile against the schema
   lint <PROFILE>         Validate + check a profile against a dataset
+  slice <DATASET>        Apply profile/ad-hoc pre_parse directives and emit clean CSV
   stats <DATASET>        Deterministic structural stats for a dataset
   suggest-key <DATASET>  Rank candidate key columns deterministically
   freeze <DRAFT>         Freeze a draft into an immutable profile
@@ -140,17 +141,22 @@ Commands:
 profile draft new --format <FORMAT> --out <FILE>
   --format <FORMAT>      csv (v0.1); other formats deferred
 
-profile draft init <DATASET> --out <FILE> [--format <FORMAT>] [--key <COLUMN>] [--column-registry <PATH>]
+profile draft init <DATASET> --out <FILE> [--format <FORMAT>] [--key <COLUMN>] [--column-registry <PATH>] [--from-peek <JSON>]
   --format <FORMAT>      csv (v0.1); others deferred
   --out <FILE>           Output path for draft profile YAML
   --key <COLUMN>         Optional: set key explicitly
   --key auto             Optional: set key to the top suggest-key candidate
   --column-registry <PATH> Optional: canon registry directory used to normalize headers to canonical column IDs
+  --from-peek <JSON>     Optional: seed pre_parse from fingerprint peek --suggest output and read headers through that slice
 
 profile validate <FILE> [--json]
 
 profile lint <PROFILE> --against <DATASET> [--json]
   (checks schema validity, then checks referenced columns/key exist in the dataset after optional registry-backed header canonicalization)
+
+profile slice <DATASET> [--profile <ID_OR_PATH> | --profile-path <FILE>] [--out <CSV>] [--emit-manifest <JSON>] [--json]
+profile slice <DATASET> --mode <preamble_skip|multi_row_header|preamble_with_units> [--skip-rows <N>] [--header-at-row <N>] [--header-rows <LIST>] [--unit-rows <LIST>] [--data-starts-at <N>]
+  (applies pre_parse directives, writes clean CSV to --out or stdout in human mode, and can emit an explicit manifest with captured preamble/unit rows)
 
 profile [--explicit] stats <DATASET> [--profile <FILE>] [--json]
   (reports column counts, null rates, and key viability; deterministic ordering; example values are omitted unless --explicit is set; when a profile carries column_registry, profile columns are resolved against canonicalized headers)
@@ -208,6 +214,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 |------------|-------------|----------|
 | `doctor` | Read-only diagnostic report | Envelope with doctor result; `--robot-triage` also emits machine-readable JSON without requiring `--json` |
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
+| `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, output hash, and lineage metadata; data rows omitted unless `--explicit` |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
 | `list`, `show`, `diff` | Report (human default) | Envelope with subcommand-specific `result` |
@@ -330,6 +337,13 @@ format: csv
 
 key: [loan_id]
 
+pre_parse:
+  slice:
+    mode: preamble_skip
+    skip_rows: 3
+    header_at_row: 4
+    data_starts_at: 5
+
 include_columns:
   - loan_id
   - balance
@@ -386,6 +400,8 @@ The frozen file on disk uses canonical field order and block style, but includes
 | `status` | string | yes | `"draft"` or `"frozen"` |
 | `format` | string | yes | v0.1 accepts `csv`; other formats are deferred |
 | `column_registry` | string | no | Local canon registry path used to normalize raw dataset headers to canonical column IDs before profile scoping |
+| `fingerprint_ref` | string | no | Optional upstream fingerprint ID used as row-shape lineage |
+| `pre_parse` | object | no | Optional CSV slicing directives used by `profile slice` and `draft init --from-peek` |
 | `hashing` | object | no (default on freeze) | `{ algorithm: "sha256" }` |
 | `equivalence` | object | no (default on freeze) | Normalization rules |
 | `equivalence.order` | string | no (default on freeze) | `"order-invariant"` (default) or `"order-sensitive"` |
@@ -523,7 +539,7 @@ Refusals are emitted inside the unified output envelope (see [Output Envelope](#
 
 ## Witness Record
 
-profile appends a witness record for subcommands that perform deterministic operations (freeze, lint, validate, stats, suggest-key). All other subcommands — draft creation (`draft new`, `draft init`), read-only queries (`list`, `show`, `diff`), and network subcommands (`push`, `pull`) — do not produce witness records.
+profile appends a witness record for subcommands that perform deterministic operations (freeze, lint, validate, slice, stats, suggest-key). All other subcommands — draft creation (`draft new`, `draft init`), read-only queries (`list`, `show`, `diff`), and network subcommands (`push`, `pull`) — do not produce witness records.
 
 The record follows the standard `witness.v0` schema:
 
@@ -555,11 +571,12 @@ Per-subcommand `params` shapes:
 freeze:      { "subcommand": "freeze", "family": "...", "version": 0 }
 validate:    { "subcommand": "validate" }
 lint:        { "subcommand": "lint", "against": "tape.csv" }
+slice:       { "directives": { "mode": "preamble_skip", ... } }
 stats:       { "subcommand": "stats", "profile": "loan_tape.v0" | null }
 suggest-key: { "subcommand": "suggest-key", "top": 5 }
 ```
 
-The `output_hash` is BLAKE3 of the primary output. For artifact subcommands (`freeze`), this is the emitted file content. For report subcommands (`stats`, `suggest-key`, `lint`, `validate`), this is the JSON representation of the result (regardless of whether `--json` was passed) — this ensures the witness hash is stable and independent of output format. `inputs` lists the files consumed by the subcommand. For `lint`, inputs include both the profile and the dataset.
+The `output_hash` is BLAKE3 of the primary output. For artifact subcommands (`freeze`), this is the emitted file content. For report subcommands (`stats`, `suggest-key`, `lint`, `validate`, `slice`), this is the JSON representation of the redacted result (regardless of whether `--json` was passed) — this ensures the witness hash is stable and independent of output format. `inputs` lists the files consumed by the subcommand. For `lint`, inputs include both the profile and the dataset. For `slice`, inputs include the dataset and profile path when one is consumed.
 
 ---
 
@@ -604,7 +621,7 @@ Any change after freeze = new version, no exceptions.
 
 Canonicalization produces a deterministic YAML byte string for SHA256 hashing. The rules:
 
-1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `hashing`, `equivalence`, `key`, `include_columns`
+1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `fingerprint_ref`, `pre_parse`, `hashing`, `equivalence`, `key`, `include_columns`
 2. **Nested field order** within `hashing`: `algorithm`. Within `equivalence`: `order`, `float_decimals`, `trim_strings` (omitted fields stay omitted)
 3. **YAML style**: block style only (no flow sequences/mappings). Strings are unquoted unless they require quoting per YAML spec. Arrays use `- item` form (one item per line)
 4. **Trailing newline**: exactly one `\n` at end of file

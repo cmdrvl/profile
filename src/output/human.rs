@@ -25,6 +25,7 @@ pub fn emit(subcommand: &str, result: Result<CommandOutput, RefusalPayload>) -> 
 fn emit_human_value(subcommand: &str, value: &Value) {
     match subcommand {
         "validate" => emit_validate_result(value),
+        "slice" => emit_slice_result(value),
         "stats" => emit_stats_result(value),
         "suggest-key" => emit_suggest_key_result(value),
         "freeze" => emit_freeze_result(value),
@@ -44,6 +45,31 @@ fn emit_human_value(subcommand: &str, value: &Value) {
             }
         }
     }
+}
+
+fn emit_slice_result(value: &Value) {
+    if let Some(csv) = value.get("slice_csv").and_then(Value::as_str) {
+        print!("{}", csv);
+        return;
+    }
+
+    if let Some(obj) = value.as_object() {
+        if let Some(path) = obj.get("output_path").and_then(Value::as_str) {
+            println!("✓ Wrote slice: {}", path);
+        }
+        if let Some(manifest) = obj.get("manifest_path").and_then(Value::as_str) {
+            println!("  Manifest: {}", manifest);
+        }
+        if let Some(output_hash) = obj.get("output_hash").and_then(Value::as_str) {
+            println!("  Output hash: {}", output_hash);
+        }
+        return;
+    }
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).unwrap_or_default()
+    );
 }
 
 fn emit_doctor_robot_docs(value: &Value) {

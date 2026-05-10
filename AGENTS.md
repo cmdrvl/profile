@@ -26,6 +26,10 @@ profile draft init tape.csv --out loan_tape.draft.yaml
 # Optional: canonicalize heterogeneous headers through a column registry
 profile draft init tape.csv --out loan_tape.draft.yaml \
   --column-registry registries/annex-columns-v0
+# Seed pre_parse from fingerprint peek, then emit clean CSV
+fingerprint peek tape.csv --json --suggest > tape.peek.json
+profile draft init tape.csv --from-peek tape.peek.json --out loan_tape.draft.yaml
+profile slice tape.csv --profile-path loan_tape.draft.yaml --out tape.clean.csv
 
 # Validate and lint against a dataset
 profile validate loan_tape.draft.yaml
@@ -57,6 +61,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 | `src/draft/` | `draft new` (blank template) and `draft init` (from CSV) |
 | `src/freeze/` | Draft → frozen transition, SHA256 |
 | `src/lint/` | Profile vs dataset column checking |
+| `src/slice.rs` | `profile slice` and pre_parse header resolution |
 | `src/stats/` | Column stats + suggest-key ranking |
 | `src/resolve/` | Profile resolution, list, show |
 | `src/diff/` | Structural profile diff |
@@ -85,7 +90,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 
 Subcommand handlers return `Result<serde_json::Value, RefusalPayload>` — they do NOT format output. The dispatch in `lib.rs` passes the result to the output layer (`output::json` for `--json`, `output::human` otherwise).
 
-**This means:** subcommand beads only implement business logic in their own `.rs` files. No subcommand bead touches `lib.rs`, any `mod.rs`, or any file in `src/output/`.
+**This means:** keep handlers focused on business logic and make dispatch/output edits as small as possible when a new command truly needs them.
 
 ---
 
@@ -94,7 +99,7 @@ Subcommand handlers return `Result<serde_json::Value, RefusalPayload>` — they 
 ### 1. Canonical form determinism
 
 Frozen profile SHA256 must be computed from a deterministic canonical form:
-1. Field order: `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `hashing`, `equivalence`, `key`, `include_columns`
+1. Field order: `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `fingerprint_ref`, `pre_parse`, `hashing`, `equivalence`, `key`, `include_columns`
 2. Block-style YAML only (no flow sequences/mappings)
 3. Exactly one trailing `\n`, no comments, no blank lines, no document markers
 4. `profile_sha256` excluded from the canonical form (it's computed from it)
@@ -114,11 +119,18 @@ All 8 refusal codes must match the plan contract: `E_INVALID_SCHEMA`, `E_MISSING
 ### 4. Witness parity
 
 Ambient witness semantics must match spine conventions:
-- Append for `freeze`, `validate`, `lint`, `stats`, `suggest-key` only
+- Append for `freeze`, `validate`, `lint`, `slice`, `stats`, `suggest-key` only
 - `--no-witness` opt-out
 - Witness failures do not mutate domain outcome or exit code
 
-### 5. Family name format
+### 5. Pre-Parse Safety
+
+- `pre_parse` is explicit profile configuration, not automatic repair.
+- `profile slice` may emit raw data only as the requested CSV output or when `--explicit` is set for JSON.
+- Default JSON output and witness records must omit raw data rows. Optional manifests are explicit artifacts and may contain captured preamble/unit rows.
+- Multi-row headers must be contiguous unless the plan is deliberately updated with a tested alternative.
+
+### 6. Family name format
 
 Must match `^[a-z][a-z0-9]*(\.[a-z][a-z0-9_]*)*$` — lowercase dot-separated segments.
 
@@ -159,6 +171,7 @@ cargo test
 - Draft new/init template generation and header-driven drafting
 - Registry-backed header canonicalization for draft/lint/stats paths
 - Validate/lint schema and column checking paths
+- Slice preamble, multi-row header, units-row, manifest, and witness-safe output paths
 - Stats/suggest-key deterministic output and ranking
 - Freeze canonicalization, default-fill, SHA256 round-trip
 - List/show resolution from `~/.epistemic/profiles/`
