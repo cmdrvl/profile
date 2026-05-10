@@ -12,6 +12,7 @@ use crate::refusal::RefusalPayload;
 
 pub mod cli;
 pub mod diff;
+pub mod discovery;
 pub mod doctor;
 pub mod draft;
 pub mod freeze;
@@ -31,7 +32,10 @@ pub fn run() -> u8 {
     if let Some(display_mode) = detect_display_mode(std::env::args_os()) {
         return match display_mode {
             DisplayMode::Describe { json_output } => handle_describe(json_output),
-            DisplayMode::Schema { json_output } => handle_schema(json_output),
+            DisplayMode::Schema {
+                json_output,
+                target,
+            } => handle_schema(json_output, target),
         };
     }
 
@@ -54,7 +58,7 @@ pub fn run() -> u8 {
     }
 
     if cli.schema {
-        return handle_schema(cli.json);
+        return handle_schema(cli.json, SchemaTarget::Profile);
     }
 
     let Some(command) = &cli.command else {
@@ -97,6 +101,7 @@ fn dispatch(
         Command::List(args) => resolve::list::run(args, no_witness).map(CommandOutput::success),
         Command::Show(args) => resolve::show::run(args, no_witness),
         Command::Diff(args) => diff::diff::run(args, no_witness).map(CommandOutput::success),
+        Command::EmitDiscovery(args) => discovery::emit::run(args),
         Command::Push(args) => network::push::run(args, no_witness),
         Command::Pull(args) => network::pull::run(args, no_witness).map(CommandOutput::success),
         Command::Witness(WitnessArgs { command }) => match command {
@@ -140,6 +145,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::List(_) => "list",
         Command::Show(_) => "show",
         Command::Diff(_) => "diff",
+        Command::EmitDiscovery(_) => "emit-discovery",
         Command::Push(_) => "push",
         Command::Pull(_) => "pull",
         Command::Witness(WitnessArgs { command }) => match command {
@@ -175,8 +181,18 @@ fn handle_describe(json_output: bool) -> u8 {
 }
 
 enum DisplayMode {
-    Describe { json_output: bool },
-    Schema { json_output: bool },
+    Describe {
+        json_output: bool,
+    },
+    Schema {
+        json_output: bool,
+        target: SchemaTarget,
+    },
+}
+
+enum SchemaTarget {
+    Profile,
+    Discovery,
 }
 
 fn detect_display_mode<I, T>(args: I) -> Option<DisplayMode>
@@ -193,14 +209,25 @@ where
     if args.iter().skip(1).any(|arg| arg == "--describe") {
         Some(DisplayMode::Describe { json_output })
     } else if args.iter().skip(1).any(|arg| arg == "--schema") {
-        Some(DisplayMode::Schema { json_output })
+        let target = if args.iter().skip(1).any(|arg| arg == "emit-discovery") {
+            SchemaTarget::Discovery
+        } else {
+            SchemaTarget::Profile
+        };
+        Some(DisplayMode::Schema {
+            json_output,
+            target,
+        })
     } else {
         None
     }
 }
 
-fn handle_schema(json_output: bool) -> u8 {
-    let schema = output::generate_profile_schema();
+fn handle_schema(json_output: bool, target: SchemaTarget) -> u8 {
+    let schema = match target {
+        SchemaTarget::Profile => output::generate_profile_schema(),
+        SchemaTarget::Discovery => output::generate_discovery_schema(),
+    };
 
     if json_output {
         let envelope = serde_json::json!({

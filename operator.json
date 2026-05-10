@@ -32,6 +32,7 @@
     { "name": "validate", "description": "Validate profile against schema" },
     { "name": "lint", "description": "Validate + check against dataset" },
     { "name": "slice", "description": "Apply profile or ad-hoc pre_parse directives to emit clean CSV plus optional manifest" },
+    { "name": "emit-discovery", "description": "Emit a profile.discovery.v0 candidate template from an already-sliced CSV" },
     { "name": "stats", "description": "Deterministic structural stats" },
     { "name": "suggest-key", "description": "Rank candidate key columns" },
     { "name": "freeze", "description": "Freeze draft into immutable profile" },

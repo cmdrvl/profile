@@ -58,6 +58,8 @@ pub enum Command {
     Show(ShowArgs),
     /// Diff two profile versions
     Diff(DiffArgs),
+    /// Emit a profile.discovery.v0 candidate template from a successful sliced CSV
+    EmitDiscovery(EmitDiscoveryArgs),
     /// Publish a frozen profile to data-fabric (deferred in v0.1)
     Push(PushArgs),
     /// Fetch a frozen profile by ID from data-fabric (deferred in v0.1)
@@ -289,6 +291,24 @@ pub struct DiffArgs {
     pub a: String,
     /// Second profile ID or path
     pub b: String,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct EmitDiscoveryArgs {
+    /// Path to an already successfully sliced CSV
+    pub sliced_csv: PathBuf,
+
+    /// Path to the original source file used to produce the slice
+    #[arg(long = "source-file")]
+    pub source_file: PathBuf,
+
+    /// Number of rows skipped before the header row in the source file
+    #[arg(long = "skip-rows")]
+    pub skip_rows: usize,
+
+    /// Optional source kind hint used to name the candidate template
+    #[arg(long = "source-kind")]
+    pub source_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]

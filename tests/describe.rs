@@ -23,7 +23,7 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
             .get("subcommands")
             .and_then(|v| v.as_array())
             .map(Vec::len),
-        Some(15)
+        Some(16)
     );
     assert!(
         manifest
@@ -32,6 +32,16 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
             .is_some_and(|subcommands| {
                 subcommands.iter().any(|subcommand| {
                     subcommand.get("name").and_then(|v| v.as_str()) == Some("slice")
+                })
+            })
+    );
+    assert!(
+        manifest
+            .get("subcommands")
+            .and_then(|v| v.as_array())
+            .is_some_and(|subcommands| {
+                subcommands.iter().any(|subcommand| {
+                    subcommand.get("name").and_then(|v| v.as_str()) == Some("emit-discovery")
                 })
             })
     );
@@ -126,6 +136,37 @@ fn schema_json_short_circuits_before_invalid_freeze_args_are_parsed() {
             .and_then(|schema| schema.get("$id"))
             .and_then(|v| v.as_str()),
         Some("https://epistemic.so/schemas/profile.v1.json")
+    );
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn schema_json_supports_discovery_schema_short_circuit() {
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("emit-discovery")
+        .arg("--schema")
+        .arg("missing-sliced.csv")
+        .arg("--source-file")
+        .arg("missing-source.csv")
+        .arg("--skip-rows")
+        .arg("4")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+    common::assert_success_exit!(assert);
+
+    assert_json_envelope_shape(&envelope);
+    assert_eq!(
+        envelope.get("subcommand").and_then(|v| v.as_str()),
+        Some("schema")
+    );
+    assert_eq!(
+        envelope
+            .get("result")
+            .and_then(|schema| schema.get("$id"))
+            .and_then(|v| v.as_str()),
+        Some("https://epistemic.so/schemas/profile.discovery.v0.json")
     );
     assert_eq!(stderr, "");
 }

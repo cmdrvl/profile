@@ -212,3 +212,83 @@ pub fn generate_profile_schema() -> Value {
         ]
     })
 }
+
+/// Generate JSON Schema for profile.discovery.v0 payloads.
+pub fn generate_discovery_schema() -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://epistemic.so/schemas/profile.discovery.v0.json",
+        "title": "Profile Discovery Candidate Schema",
+        "description": "Canonical discovery candidate template emitted by profile emit-discovery",
+        "type": "object",
+        "required": ["version", "outcome", "candidate_template", "next_action"],
+        "additionalProperties": false,
+        "properties": {
+            "version": {
+                "type": "string",
+                "const": "profile.discovery.v0"
+            },
+            "outcome": {
+                "type": "string",
+                "const": "DISCOVERED"
+            },
+            "candidate_template": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "source_kind",
+                    "skip_rows",
+                    "header_row_offset",
+                    "column_count",
+                    "headers",
+                    "evidence"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "id": {"type": "string", "minLength": 1},
+                    "source_kind": {"type": "string", "minLength": 1},
+                    "skip_rows": {"type": "integer", "minimum": 0},
+                    "header_row_offset": {"type": "integer", "minimum": 0},
+                    "column_count": {"type": "integer", "minimum": 1},
+                    "headers": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string"}
+                    },
+                    "evidence": {
+                        "type": "object",
+                        "required": [
+                            "source_file_sha256",
+                            "lines_scanned",
+                            "consistent_column_count_below_offset",
+                            "preamble_lines",
+                            "header_row_signal_strength"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "source_file_sha256": {
+                                "type": "string",
+                                "pattern": "^sha256:[a-f0-9]{64}$"
+                            },
+                            "lines_scanned": {"type": "integer", "minimum": 0},
+                            "consistent_column_count_below_offset": {"type": "boolean"},
+                            "preamble_lines": {
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "header_row_signal_strength": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0
+                            }
+                        }
+                    }
+                }
+            },
+            "next_action": {
+                "type": "string",
+                "minLength": 1
+            }
+        }
+    })
+}

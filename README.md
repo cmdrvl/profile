@@ -214,6 +214,19 @@ profile slice vendor_export.csv --mode multi_row_header --header-rows 2,3 --data
 
 Without `--out` in human mode, `slice` writes the clean CSV to stdout. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows.
 
+### `profile emit-discovery`
+
+Emit a deterministic `profile.discovery.v0` candidate template from an already-sliced CSV and a chosen preamble skip offset:
+
+```bash
+profile emit-discovery linkedin_sliced.csv \
+  --source-file Connections.csv \
+  --skip-rows 3 \
+  --source-kind linkedin_export --json
+```
+
+The result payload is designed for downstream `fingerprint template promote` without re-reading the source file.
+
 ### `profile stats`
 
 Surface structural statistics about a dataset. Per-column example values are redacted by
@@ -316,7 +329,7 @@ rvl old.csv new.csv --profile loan_profile.yaml --json
 | Flag | Behavior |
 |------|----------|
 | `--describe` | Print `operator.json` and exit `0` before normal input validation |
-| `--schema` | Print profile JSON Schema and exit `0` before normal input validation (deferred in v0.1) |
+| `--schema` | Print JSON Schema and exit `0` before normal input validation (`profile --schema` prints profile YAML schema; `profile emit-discovery --schema` prints `profile.discovery.v0` schema) |
 | `--version` | Print `profile <semver>` and exit `0` |
 | `--no-witness` | Suppress witness ledger recording |
 
@@ -354,7 +367,7 @@ With `--json`, refusals are emitted in the unified output envelope (`outcome=REF
 ### Witness behavior
 
 - Witness append is enabled for: `freeze`, `validate`, `lint`, `slice`, `stats`, `suggest-key`
-- Witness append is skipped for: `draft new`, `draft init`, `list`, `show`, `diff`, `push`, `pull`
+- Witness append is skipped for: `draft new`, `draft init`, `emit-discovery`, `list`, `show`, `diff`, `push`, `pull`
 - `--no-witness` disables witness writes without changing domain outcome or exit semantics
 - Ledger path: `$EPISTEMIC_WITNESS` or `~/.epistemic/witness.jsonl`
 - Witness append failures warn on stderr and do not change primary command outcome/exit code

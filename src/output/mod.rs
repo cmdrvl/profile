@@ -4,4 +4,4 @@ pub mod schema;
 
 pub use human::emit as emit_human;
 pub use json::emit as emit_json;
-pub use schema::generate_profile_schema;
+pub use schema::{generate_discovery_schema, generate_profile_schema};

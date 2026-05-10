@@ -124,6 +124,7 @@ Commands:
   validate <FILE>        Validate a profile against the schema
   lint <PROFILE>         Validate + check a profile against a dataset
   slice <DATASET>        Apply profile/ad-hoc pre_parse directives and emit clean CSV
+  emit-discovery <CSV>   Emit profile.discovery.v0 candidate template from sliced CSV
   stats <DATASET>        Deterministic structural stats for a dataset
   suggest-key <DATASET>  Rank candidate key columns deterministically
   freeze <DRAFT>         Freeze a draft into an immutable profile
@@ -157,6 +158,9 @@ profile lint <PROFILE> --against <DATASET> [--json]
 profile slice <DATASET> [--profile <ID_OR_PATH> | --profile-path <FILE>] [--out <CSV>] [--emit-manifest <JSON>] [--json]
 profile slice <DATASET> --mode <preamble_skip|multi_row_header|preamble_with_units> [--skip-rows <N>] [--header-at-row <N>] [--header-rows <LIST>] [--unit-rows <LIST>] [--data-starts-at <N>]
   (applies pre_parse directives, writes clean CSV to --out or stdout in human mode, and can emit an explicit manifest with captured preamble/unit rows)
+
+profile emit-discovery <SLICED_CSV> --source-file <SOURCE_CSV> --skip-rows <N> [--source-kind <KIND>] [--json]
+  (builds deterministic profile.discovery.v0 candidate output for fingerprint template promotion from a caller-selected successful slice)
 
 profile [--explicit] stats <DATASET> [--profile <FILE>] [--json]
   (reports column counts, null rates, and key viability; deterministic ordering; example values are omitted unless --explicit is set; when a profile carries column_registry, profile columns are resolved against canonicalized headers)
@@ -194,7 +198,7 @@ profile doctor --robot-triage
 ### Common flags (all subcommands)
 
 - `--describe`: Print `operator.json` to stdout and exit 0. Checked before input is validated.
-- `--schema`: Print JSON Schema for profile YAML to stdout and exit 0. Like `--describe`, checked before input is validated. Deferred in v0.1.
+- `--schema`: Print JSON Schema to stdout and exit 0. Like `--describe`, checked before input is validated. `profile --schema` emits profile YAML schema; `profile emit-discovery --schema` emits `profile.discovery.v0` schema.
 - `--version`: Print `profile <semver>` to stdout and exit 0.
 - `--no-witness`: Suppress witness ledger recording.
 
@@ -215,6 +219,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 | `doctor` | Read-only diagnostic report | Envelope with doctor result; `--robot-triage` also emits machine-readable JSON without requiring `--json` |
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
 | `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, output hash, and lineage metadata; data rows omitted unless `--explicit` |
+| `emit-discovery` | Canonical discovery candidate object | Envelope with `result` containing a `profile.discovery.v0` payload |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
 | `list`, `show`, `diff` | Report (human default) | Envelope with subcommand-specific `result` |
@@ -537,9 +542,43 @@ Refusals are emitted inside the unified output envelope (see [Output Envelope](#
 
 ---
 
+## Discovery Candidate Payload (`profile.discovery.v0`)
+
+`emit-discovery` produces a deterministic JSON object for downstream `fingerprint template promote`:
+
+```json
+{
+  "version": "profile.discovery.v0",
+  "outcome": "DISCOVERED",
+  "candidate_template": {
+    "id": "linkedin_export.candidate.v0",
+    "source_kind": "linkedin_export",
+    "skip_rows": 3,
+    "header_row_offset": 3,
+    "column_count": 7,
+    "headers": ["First Name", "Last Name", "..."],
+    "evidence": {
+      "source_file_sha256": "sha256:...",
+      "lines_scanned": 3147,
+      "consistent_column_count_below_offset": true,
+      "preamble_lines": ["Notes:", "..."],
+      "header_row_signal_strength": 1.0
+    }
+  },
+  "next_action": "fingerprint template promote --as linkedin_export.v1"
+}
+```
+
+`emit-discovery` refusal mapping stays inside profile's refusal contract:
+- bad slice shape (`E_BAD_SLICE` reason marker) -> `E_CSV_PARSE`
+- non-text source (`E_NOT_TEXT` reason marker) -> `E_CSV_PARSE`
+- read/write failures -> `E_IO`
+
+---
+
 ## Witness Record
 
-profile appends a witness record for subcommands that perform deterministic operations (freeze, lint, validate, slice, stats, suggest-key). All other subcommands — draft creation (`draft new`, `draft init`), read-only queries (`list`, `show`, `diff`), and network subcommands (`push`, `pull`) — do not produce witness records.
+profile appends a witness record for subcommands that perform deterministic operations (freeze, lint, validate, slice, stats, suggest-key). All other subcommands — draft creation (`draft new`, `draft init`), discovery export (`emit-discovery`), read-only queries (`list`, `show`, `diff`), and network subcommands (`push`, `pull`) — do not produce witness records.
 
 The record follows the standard `witness.v0` schema:
 
@@ -683,6 +722,15 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       d. Check all include_columns exist   → report missing columns (domain finding, not refusal)
       e. Check key columns exist           → report missing keys (domain finding, not refusal)
       f. Exit 0 (all clear) or 1 (issues found) or 2 (refusal from steps a-c)
+
+    emit-discovery:
+      a. Open source file bytes            → E_IO if not found or permission denied
+      b. Verify source is UTF-8 text       → E_CSV_PARSE (detail marker `E_NOT_TEXT`) if binary/non-text
+      c. Open sliced CSV                   → E_IO if not found or permission denied
+      d. Parse sliced CSV rows             → E_CSV_PARSE if invalid structure
+      e. Verify all rows match header width → E_CSV_PARSE (detail marker `E_BAD_SLICE`) if inconsistent
+      f. Emit `profile.discovery.v0` payload (human or --json)
+      g. Exit 0
 
     stats:
       a. Open dataset file                 → E_IO if not found or permission denied
