@@ -212,7 +212,7 @@ profile slice vendor_export.csv --profile-path vendor_profile.yaml --out clean.c
 profile slice vendor_export.csv --mode multi_row_header --header-rows 2,3 --data-starts-at 4
 ```
 
-Without `--out` in human mode, `slice` writes the clean CSV to stdout. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows.
+Without `--out` in human mode, `slice` writes the clean CSV to stdout. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows. When a profile is provided and slice flags override profile directives, `slice` emits explicit warnings.
 
 ### `profile emit-discovery`
 

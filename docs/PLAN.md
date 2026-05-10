@@ -157,7 +157,7 @@ profile lint <PROFILE> --against <DATASET> [--json]
 
 profile slice <DATASET> [--profile <ID_OR_PATH> | --profile-path <FILE>] [--out <CSV>] [--emit-manifest <JSON>] [--json]
 profile slice <DATASET> --mode <preamble_skip|multi_row_header|preamble_with_units> [--skip-rows <N>] [--header-at-row <N>] [--header-rows <LIST>] [--unit-rows <LIST>] [--data-starts-at <N>]
-  (applies pre_parse directives, writes clean CSV to --out or stdout in human mode, and can emit an explicit manifest with captured preamble/unit rows)
+  (applies pre_parse directives, writes clean CSV to --out or stdout in human mode, emits warnings when profile directives are overridden by flags, and can emit an explicit manifest with captured preamble/unit rows)
 
 profile emit-discovery <SLICED_CSV> --source-file <SOURCE_CSV> --skip-rows <N> [--source-kind <KIND>] [--json]
   (builds deterministic profile.discovery.v0 candidate output for fingerprint template promotion from a caller-selected successful slice)
@@ -722,6 +722,15 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       d. Check all include_columns exist   → report missing columns (domain finding, not refusal)
       e. Check key columns exist           → report missing keys (domain finding, not refusal)
       f. Exit 0 (all clear) or 1 (issues found) or 2 (refusal from steps a-c)
+
+    slice:
+      a. Resolve profile/path and directives → E_IO / E_INVALID_SCHEMA on bad profile access/shape
+      b. Apply CLI directive overrides       → warning when profile directives are overridden by flags
+      c. Stream and parse physical rows      → E_IO / E_CSV_PARSE on file/row parse failure
+      d. Build sliced output                 → E_EMPTY if no data rows after directives applied
+      e. If expected_shape.modal_column_count is set and differs from output width → warning
+      f. Emit clean CSV + optional manifest + deterministic output_hash
+      g. Exit 0
 
     emit-discovery:
       a. Open source file bytes            → E_IO if not found or permission denied

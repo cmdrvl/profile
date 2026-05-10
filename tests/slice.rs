@@ -3,6 +3,8 @@ mod common;
 use common::{fixture_path, parse_stdout_json, profile_cmd, temp_workspace};
 use serde_json::{Value, json};
 use std::fs;
+use std::io::{BufWriter, Write};
+use std::time::{Duration, Instant};
 
 #[test]
 fn slice_profile_driven_preamble_skip_writes_clean_csv_and_manifest() {
@@ -188,4 +190,209 @@ fn draft_init_from_peek_uses_suggested_slice_headers() {
         serde_yaml::from_str(&fs::read_to_string(&out).expect("profile yaml")).expect("yaml");
     assert_eq!(yaml["include_columns"][0], "Account ID");
     assert_eq!(yaml["pre_parse"]["slice"]["header_at_row"], 4);
+}
+
+#[test]
+fn slice_profile_override_records_warning_in_json() {
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(fixture_path("slice/preamble.csv"))
+        .arg("--profile-path")
+        .arg(fixture_path("slice/preparse_profile.yaml"))
+        .arg("--skip-rows")
+        .arg("2")
+        .arg("--json")
+        .arg("--no-witness")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    assert!(
+        envelope["result"]["warnings"]
+            .as_array()
+            .is_some_and(|warnings| !warnings.is_empty())
+    );
+    assert!(
+        envelope["result"]["warnings"][0]
+            .as_str()
+            .is_some_and(|warning| warning.contains("--skip-rows"))
+    );
+}
+
+#[test]
+fn slice_profile_override_emits_human_warning_to_stderr() {
+    let workspace = temp_workspace();
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(fixture_path("slice/preamble.csv"))
+        .arg("--profile-path")
+        .arg(fixture_path("slice/preparse_profile.yaml"))
+        .arg("--skip-rows")
+        .arg("2")
+        .arg("--out")
+        .arg(workspace.path().join("clean.csv"))
+        .arg("--no-witness")
+        .assert();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+    common::assert_success_exit!(assert);
+
+    assert!(stderr.contains("Warning: profile pre_parse directives were overridden"));
+}
+
+#[test]
+fn slice_warns_when_expected_modal_column_count_mismatches_output() {
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(fixture_path("slice/modal_mismatch.csv"))
+        .arg("--profile-path")
+        .arg(fixture_path("slice/modal_mismatch_profile.yaml"))
+        .arg("--json")
+        .arg("--no-witness")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    assert!(
+        envelope["result"]["warnings"]
+            .as_array()
+            .is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning
+                        .as_str()
+                        .is_some_and(|text| text.contains("expected_shape.modal_column_count"))
+                })
+            })
+    );
+}
+
+#[test]
+fn slice_refuses_when_data_rows_are_absent_after_directives() {
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(fixture_path("slice/edge_only_preamble.csv"))
+        .arg("--mode")
+        .arg("preamble_skip")
+        .arg("--skip-rows")
+        .arg("1")
+        .arg("--header-at-row")
+        .arg("2")
+        .arg("--json")
+        .arg("--no-witness")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_refusal_exit!(assert);
+
+    assert_eq!(envelope["result"]["code"], "E_EMPTY");
+    assert_eq!(
+        envelope["result"]["detail"]["reason"],
+        "no data rows after slice directives applied"
+    );
+}
+
+#[test]
+fn slice_output_hash_is_reproducible_across_runs() {
+    let mut hashes = Vec::new();
+    for _ in 0..5 {
+        let assert = profile_cmd()
+            .arg("slice")
+            .arg(fixture_path("slice/preamble.csv"))
+            .arg("--profile-path")
+            .arg(fixture_path("slice/preparse_profile.yaml"))
+            .arg("--json")
+            .arg("--no-witness")
+            .assert();
+        let envelope = parse_stdout_json(&assert);
+        common::assert_success_exit!(assert);
+        hashes.push(
+            envelope["result"]["output_hash"]
+                .as_str()
+                .expect("output hash")
+                .to_owned(),
+        );
+    }
+
+    assert!(hashes.windows(2).all(|window| window[0] == window[1]));
+}
+
+#[test]
+fn slice_fixture_profiles_round_trip_with_lint() {
+    let workspace = temp_workspace();
+    let cases = [
+        ("slice/preamble.csv", "slice/preparse_profile.yaml"),
+        ("slice/multi_header.csv", "slice/multi_header_profile.yaml"),
+        ("slice/units.csv", "slice/units_profile.yaml"),
+        ("slice/clean_flat.csv", "slice/clean_flat_profile.yaml"),
+    ];
+
+    for (index, (input, profile)) in cases.iter().enumerate() {
+        let sliced_output = workspace
+            .path()
+            .join(format!("slice_roundtrip_{index}.csv"));
+        let slice_assert = profile_cmd()
+            .arg("slice")
+            .arg(fixture_path(input))
+            .arg("--profile-path")
+            .arg(fixture_path(profile))
+            .arg("--out")
+            .arg(&sliced_output)
+            .arg("--json")
+            .arg("--no-witness")
+            .assert();
+        common::assert_success_exit!(slice_assert);
+
+        let lint_assert = profile_cmd()
+            .arg("lint")
+            .arg(fixture_path(profile))
+            .arg("--against")
+            .arg(&sliced_output)
+            .arg("--json")
+            .arg("--no-witness")
+            .assert();
+        let lint_envelope = parse_stdout_json(&lint_assert);
+        common::assert_success_exit!(lint_assert);
+        assert!(
+            lint_envelope["result"]["issues"]
+                .as_array()
+                .is_some_and(|issues| issues.is_empty())
+        );
+    }
+}
+
+#[test]
+#[ignore = "performance smoke; run manually in release workflows"]
+fn slice_100mb_dataset_perf_smoke() {
+    let workspace = temp_workspace();
+    let large_csv = workspace.path().join("large_100mb.csv");
+    let out = workspace.path().join("large_100mb.clean.csv");
+
+    let file = fs::File::create(&large_csv).expect("create large fixture");
+    let mut writer = BufWriter::new(file);
+    writeln!(writer, "id,value").expect("write header");
+    let mut bytes_written = "id,value\n".len() as u64;
+    let row = b"1234567890,abcdefghijklmnopqrstuvwxyz0123456789\n";
+    while bytes_written < 100 * 1024 * 1024 {
+        writer.write_all(row).expect("write row");
+        bytes_written += row.len() as u64;
+    }
+    writer.flush().expect("flush fixture");
+
+    let start = Instant::now();
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(&large_csv)
+        .arg("--mode")
+        .arg("preamble_skip")
+        .arg("--skip-rows")
+        .arg("0")
+        .arg("--header-at-row")
+        .arg("1")
+        .arg("--data-starts-at")
+        .arg("2")
+        .arg("--out")
+        .arg(&out)
+        .arg("--json")
+        .arg("--no-witness")
+        .assert();
+    common::assert_success_exit!(assert);
+    assert!(start.elapsed() < Duration::from_secs(15));
 }

@@ -1,0 +1,17 @@
+schema_version: 1
+status: draft
+format: csv
+pre_parse:
+  expected_shape:
+    modal_column_count: 3
+    first_data_row: 2
+  slice:
+    mode: preamble_skip
+    header_at_row: 1
+    data_starts_at: 2
+include_columns:
+  - id
+  - name
+  - amount
+key:
+  - id

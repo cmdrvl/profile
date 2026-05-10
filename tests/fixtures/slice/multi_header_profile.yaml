@@ -1,0 +1,20 @@
+schema_version: 1
+status: draft
+format: csv
+pre_parse:
+  expected_shape:
+    modal_column_count: 4
+  slice:
+    mode: multi_row_header
+    header_rows: [1, 2]
+    header_merge:
+      strategy: ffill_concat
+      separator: "."
+    data_starts_at: 3
+include_columns:
+  - Portfolio.ID
+  - Portfolio.Name
+  - Metric.Amount
+  - Metric.Rate
+key:
+  - Portfolio.ID

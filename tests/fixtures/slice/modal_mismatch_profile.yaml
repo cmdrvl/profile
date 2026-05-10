@@ -1,0 +1,17 @@
+schema_version: 1
+status: draft
+format: csv
+pre_parse:
+  expected_shape:
+    modal_column_count: 4
+  slice:
+    mode: preamble_skip
+    skip_rows: 1
+    header_at_row: 2
+    data_starts_at: 3
+include_columns:
+  - Account ID
+  - Account Name
+  - Amount
+key:
+  - Account ID

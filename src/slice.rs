@@ -1,4 +1,5 @@
-use std::fs;
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -35,13 +36,16 @@ pub fn run(
     let profile_path = resolved_profile
         .as_ref()
         .map(|resolved| resolved.path.clone());
-    let directives = effective_directives(args, profile)?;
+    let (directives, mut warnings) = effective_directives(args, profile)?;
     validate_directives(&directives)?;
 
     let delimiter = resolve_delimiter(&directives)?;
     let rows = read_physical_rows(&args.file, delimiter)?;
     let plan = build_plan(&directives)?;
     let slice = build_slice(&rows, &plan, &directives)?;
+    if let Some(warning) = modal_column_count_warning(profile, slice.headers.len()) {
+        warnings.push(warning);
+    }
     let csv_bytes = render_csv(&slice.headers, &slice.data_rows)?;
     let output_hash = format!("blake3:{}", blake3::hash(&csv_bytes).to_hex());
 
@@ -89,6 +93,12 @@ pub fn run(
         "columns": slice.headers,
         "output_hash": output_hash
     });
+    if !warnings.is_empty() {
+        result["warnings"] = json!(warnings);
+        if !json_output {
+            emit_slice_warnings(&warnings);
+        }
+    }
 
     if explicit || (!json_output && args.out.is_none()) {
         result["slice_csv"] =
@@ -155,7 +165,7 @@ fn resolve_slice_profile(args: &SliceArgs) -> Result<Option<SliceProfile>, Refus
 fn effective_directives(
     args: &SliceArgs,
     profile: Option<&Profile>,
-) -> Result<SliceDirectives, RefusalPayload> {
+) -> Result<(SliceDirectives, Vec<String>), RefusalPayload> {
     let mut directives = profile
         .and_then(|profile| profile.pre_parse.as_ref())
         .map(|pre_parse| pre_parse.slice.clone())
@@ -172,18 +182,23 @@ fn effective_directives(
             unit_rows_capture: Some(true),
             unit_rows: Vec::new(),
         });
+    let mut overridden_flags = Vec::new();
 
     if let Some(mode) = args.mode {
         directives.mode = mode.into();
+        overridden_flags.push("--mode");
     }
     if let Some(skip_rows) = args.skip_rows {
         directives.skip_rows = Some(skip_rows);
+        overridden_flags.push("--skip-rows");
     }
     if let Some(header_at_row) = args.header_at_row {
         directives.header_at_row = Some(header_at_row);
+        overridden_flags.push("--header-at-row");
     }
     if let Some(header_rows) = args.header_rows.as_deref() {
         directives.header_rows = parse_row_list("header_rows", header_rows)?;
+        overridden_flags.push("--header-rows");
     }
     if args.header_merge.is_some() {
         directives.header_merge = Some(HeaderMerge {
@@ -194,18 +209,23 @@ fn effective_directives(
             separator: Some(args.header_merge_sep.clone()),
             empty_placeholder: None,
         });
+        overridden_flags.push("--header-merge");
     }
     if let Some(unit_rows) = args.unit_rows.as_deref() {
         directives.unit_rows = parse_row_list("unit_rows", unit_rows)?;
+        overridden_flags.push("--unit-rows");
     }
     if let Some(data_starts_at) = args.data_starts_at {
         directives.data_starts_at = Some(data_starts_at);
+        overridden_flags.push("--data-starts-at");
     }
     if let Some(delimiter) = args.delimiter.as_ref() {
         directives.delimiter = Some(delimiter.clone());
+        overridden_flags.push("--delimiter");
     }
     if let Some(encoding) = args.encoding.as_ref() {
         directives.encoding = Some(encoding.clone());
+        overridden_flags.push("--encoding");
     }
 
     if profile.is_some() && directives.header_rows.is_empty() && directives.header_at_row.is_none()
@@ -216,7 +236,16 @@ fn effective_directives(
         ));
     }
 
-    Ok(directives)
+    let warnings = if profile.is_some() && !overridden_flags.is_empty() {
+        vec![format!(
+            "profile pre_parse directives were overridden by CLI flags: {}",
+            overridden_flags.join(", ")
+        )]
+    } else {
+        Vec::new()
+    };
+
+    Ok((directives, warnings))
 }
 
 fn infer_mode_from_args(args: &SliceArgs) -> SliceMode {
@@ -304,16 +333,22 @@ fn resolve_delimiter(directives: &SliceDirectives) -> Result<u8, RefusalPayload>
 }
 
 fn read_physical_rows(path: &Path, delimiter: u8) -> Result<Vec<Vec<String>>, RefusalPayload> {
-    let content = fs::read_to_string(path)
+    let file = File::open(path)
         .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
-    if content.is_empty() {
-        return Err(RefusalPayload::empty_with_reason(
-            path.display().to_string(),
-            "no rows",
-        ));
-    }
+    let mut buffered = BufReader::new(file);
     let mut rows = Vec::new();
-    for line in content.lines() {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let read = buffered
+            .read_line(&mut line)
+            .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
+        if read == 0 {
+            break;
+        }
+        while line.ends_with('\n') || line.ends_with('\r') {
+            line.pop();
+        }
         if line.trim().is_empty() {
             rows.push(Vec::new());
             continue;
@@ -327,16 +362,38 @@ fn read_physical_rows(path: &Path, delimiter: u8) -> Result<Vec<Vec<String>>, Re
             .records()
             .next()
             .transpose()
-            .map_err(|_| {
-                RefusalPayload::csv_parse(
-                    path.display().to_string(),
-                    "CSV parser rejected row structure",
-                )
+            .map_err(|error| {
+                RefusalPayload::csv_parse(path.display().to_string(), error.to_string())
             })?
             .ok_or_else(|| RefusalPayload::empty(path.display().to_string()))?;
         rows.push(record.iter().map(ToOwned::to_owned).collect());
     }
+    if rows.is_empty() {
+        return Err(RefusalPayload::empty_with_reason(
+            path.display().to_string(),
+            "no rows",
+        ));
+    }
     Ok(rows)
+}
+
+fn modal_column_count_warning(profile: Option<&Profile>, output_columns: usize) -> Option<String> {
+    let expected = profile
+        .and_then(|profile| profile.pre_parse.as_ref())
+        .and_then(|pre_parse| pre_parse.expected_shape.as_ref())
+        .and_then(|expected_shape| expected_shape.modal_column_count)?;
+    (expected != output_columns).then(|| {
+        format!(
+            "expected_shape.modal_column_count is {} but slice produced {} columns",
+            expected, output_columns
+        )
+    })
+}
+
+fn emit_slice_warnings(warnings: &[String]) {
+    for warning in warnings {
+        eprintln!("Warning: {warning}");
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -397,6 +454,12 @@ fn build_slice(
                 .then_some(row.clone())
         })
         .collect::<Vec<_>>();
+    if data_rows.is_empty() {
+        return Err(RefusalPayload::empty_with_reason(
+            "slice",
+            "no data rows after slice directives applied",
+        ));
+    }
     let width = header_source
         .iter()
         .chain(data_rows.iter())
