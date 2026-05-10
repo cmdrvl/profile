@@ -29,9 +29,11 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
         manifest
             .get("subcommands")
             .and_then(|v| v.as_array())
-            .is_some_and(|subcommands| subcommands
-                .iter()
-                .any(|subcommand| subcommand.get("name").and_then(|v| v.as_str()) == Some("slice")))
+            .is_some_and(|subcommands| {
+                subcommands.iter().any(|subcommand| {
+                    subcommand.get("name").and_then(|v| v.as_str()) == Some("slice")
+                })
+            })
     );
 }
 
