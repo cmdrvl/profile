@@ -1,5 +1,9 @@
 # profile
 
+![profile: freeze operator knowledge. A painterly dashboard showing Connections.csv with its four-row preamble dimmed and the header at row 4 highlighted. A profile config draft in the middle holds fields like header_at, key_column, trim_whitespace, decimals, slug. A snowflake FREEZE action produces a profile.lock file with sha256:9a2c…f1d8. Outputs include a clean CSV table and a slicing manifest. A profile version history table shows v1 draft and v2 frozen.](docs/images/profile.webp)
+
+> *What you know about the file becomes a hash. The freeze is the moment of trust.*
+
 <div align="center">
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -479,3 +483,7 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 ```
+
+---
+
+*`profile` is part of the open-source toolchain from the [CMD+RVL](https://cmdrvl.com) lineage and AI enablement practice. MIT-licensed. Contributions welcome from any practice or stack.*
