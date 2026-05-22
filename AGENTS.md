@@ -174,7 +174,7 @@ cargo test
 - Slice preamble, multi-row header, units-row, manifest, and witness-safe output paths
 - Stats/suggest-key deterministic output and ranking
 - Freeze canonicalization, default-fill, SHA256 round-trip
-- List/show resolution from `~/.epistemic/profiles/`
+- List/show resolution from `~/.cmdrvl/config/profile/profiles/`, with legacy `~/.epistemic/profiles/` copied on first default use
 - Diff semantic-fields-only comparison
 - Refusal envelope shape and detail payloads for all 8 codes
 - Witness append/no-witness/query behavior

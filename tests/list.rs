@@ -8,7 +8,7 @@ use common::{assert_json_envelope_shape, parse_stdout_json, profile_cmd, temp_wo
 fn list_json_uses_home_profile_directory_and_sorts_family_then_version() {
     let workspace = temp_workspace();
     let home_dir = workspace.path().join("home");
-    let profiles_dir = home_dir.join(".epistemic").join("profiles");
+    let profiles_dir = canonical_profiles_dir(&home_dir);
     fs::create_dir_all(&profiles_dir).expect("profiles directory should be created");
 
     write_frozen_profile(
@@ -72,6 +72,46 @@ fn list_json_uses_home_profile_directory_and_sorts_family_then_version() {
 }
 
 #[test]
+fn list_json_copies_legacy_home_profile_directory_once() {
+    let workspace = temp_workspace();
+    let home_dir = workspace.path().join("legacy-home");
+    let legacy_profiles_dir = home_dir.join(".epistemic").join("profiles");
+    fs::create_dir_all(&legacy_profiles_dir).expect("legacy profiles directory should exist");
+    write_frozen_profile(
+        &legacy_profiles_dir.join("legacy.yaml"),
+        "csv.legacy.core",
+        0,
+        "4444444444444444444444444444444444444444444444444444444444444444",
+    );
+
+    let assert = profile_cmd()
+        .env("HOME", &home_dir)
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("list")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    let profiles = envelope
+        .get("result")
+        .and_then(|r| r.get("profiles"))
+        .and_then(|v| v.as_array())
+        .expect("result.profiles should be an array");
+    assert_eq!(profiles.len(), 1);
+    assert!(
+        canonical_profiles_dir(&home_dir)
+            .join("legacy.yaml")
+            .exists()
+    );
+    let migration = fs::read_to_string(home_dir.join(".cmdrvl/migrations/applied.jsonl")).unwrap();
+    assert!(migration.contains("\"path_class\":\"profile_profiles\""));
+    let notice =
+        fs::read_to_string(home_dir.join(".cmdrvl/notices/deprecated-paths.jsonl")).unwrap();
+    assert!(notice.contains("\"path_class\":\"profile_profiles\""));
+}
+
+#[test]
 fn list_json_returns_empty_when_home_profile_dir_is_missing() {
     let workspace = temp_workspace();
     let home_dir = workspace.path().join("empty-home");
@@ -110,4 +150,11 @@ include_columns:
 ",
     );
     fs::write(path, content).expect("profile fixture should be written");
+}
+
+fn canonical_profiles_dir(home: &std::path::Path) -> std::path::PathBuf {
+    home.join(".cmdrvl")
+        .join("config")
+        .join("profile")
+        .join("profiles")
 }

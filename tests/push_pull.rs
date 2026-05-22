@@ -73,6 +73,46 @@ fn push_json_publishes_frozen_profile_payload() {
 }
 
 #[test]
+fn push_json_copies_legacy_fabric_config_to_cmdrvl_root() {
+    let (base_url, server) = spawn_one_shot_server(|request| {
+        assert_eq!(request.method(), &Method::Post);
+        assert_eq!(request.url(), "/execute");
+        request
+            .respond(json_response(202, r#"{"errors":null}"#))
+            .expect("response should be sent");
+    });
+
+    let workspace = temp_workspace();
+    let home = workspace.path().join("home");
+    let legacy_config = home.join(".epistemic").join("config.toml");
+    fs::create_dir_all(legacy_config.parent().unwrap()).expect("legacy config parent");
+    fs::write(&legacy_config, format!("[fabric]\nurl = \"{base_url}\"\n"))
+        .expect("legacy config should be written");
+
+    let assert = profile_cmd()
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env_remove("EPISTEMIC_FABRIC_URL")
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("push")
+        .arg(fixture_path("profiles/valid/frozen_complete.yaml"))
+        .assert();
+    common::assert_success_exit!(assert);
+
+    let canonical_config = home
+        .join(".cmdrvl")
+        .join("config")
+        .join("profile")
+        .join("config.toml");
+    assert!(canonical_config.exists());
+    let migration = fs::read_to_string(home.join(".cmdrvl/migrations/applied.jsonl")).unwrap();
+    assert!(migration.contains("\"path_class\":\"profile_config\""));
+
+    server.join().expect("server thread should complete");
+}
+
+#[test]
 fn push_json_refuses_non_frozen_profile_with_e_invalid_schema() {
     let assert = profile_cmd()
         .arg("--json")

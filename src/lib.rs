@@ -19,6 +19,7 @@ pub mod freeze;
 pub mod lint;
 pub mod network;
 pub mod output;
+pub(crate) mod paths;
 pub mod refusal;
 pub mod resolve;
 pub mod schema;

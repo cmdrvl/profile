@@ -49,7 +49,7 @@ fn show_json_resolves_existing_path_directly() {
 fn show_json_falls_back_to_home_profiles_by_profile_id() {
     let workspace = temp_workspace();
     let home_dir = workspace.path().join("home");
-    let profiles_dir = home_dir.join(".epistemic").join("profiles");
+    let profiles_dir = canonical_profiles_dir(&home_dir);
     fs::create_dir_all(&profiles_dir).expect("profiles directory should be created");
     let profile_path = copy_fixture(
         "profiles/valid/frozen_complete.yaml",
@@ -73,6 +73,13 @@ fn show_json_falls_back_to_home_profiles_by_profile_id() {
             .and_then(|v| v.as_str()),
         Some(profile_path.to_string_lossy().as_ref())
     );
+}
+
+fn canonical_profiles_dir(home: &std::path::Path) -> std::path::PathBuf {
+    home.join(".cmdrvl")
+        .join("config")
+        .join("profile")
+        .join("profiles")
 }
 
 #[test]

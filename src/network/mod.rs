@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
 
 use serde_json::Value;
 
@@ -45,13 +44,8 @@ fn resolve_fabric_url() -> Result<String, RefusalPayload> {
         }
     }
 
-    let home = env::var("HOME").map_err(|error| {
-        RefusalPayload::io(
-            "$HOME".to_string(),
-            format!("HOME environment variable unavailable: {error}"),
-        )
-    })?;
-    let config_path = PathBuf::from(home).join(".epistemic").join("config.toml");
+    let config_path = crate::paths::fabric_config_path_for_read()
+        .map_err(|error| RefusalPayload::io("profile config".to_string(), error.to_string()))?;
     let content = fs::read_to_string(&config_path).map_err(|error| {
         RefusalPayload::io(config_path.display().to_string(), error.to_string())
     })?;

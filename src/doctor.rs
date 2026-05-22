@@ -206,7 +206,7 @@ fn triage_report() -> Value {
                 "id": "witness_append_warning",
                 "classification": "non_blocking_audit_warning",
                 "exit_code": 0,
-                "operator_action": "inspect EPISTEMIC_WITNESS or ~/.epistemic/witness.jsonl permissions"
+                "operator_action": "inspect EPISTEMIC_WITNESS or ~/.cmdrvl/state/witness/witness.jsonl permissions"
             },
             {
                 "id": "remote_push_transport_failure",

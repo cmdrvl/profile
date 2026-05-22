@@ -33,7 +33,7 @@ pub fn resolve_profile(profile_ref: &str) -> Result<ResolvedProfile, RefusalPayl
         .ok_or_else(|| {
             RefusalPayload::io(
                 profile_ref.to_string(),
-                "profile not found in ~/.epistemic/profiles".to_string(),
+                "profile not found in ~/.cmdrvl/config/profile/profiles".to_string(),
             )
         })
 }
@@ -96,11 +96,6 @@ fn parse_profile_from_path(path: &Path) -> Result<ResolvedProfile, RefusalPayloa
 }
 
 fn default_profile_directory() -> Result<PathBuf, RefusalPayload> {
-    let home = std::env::var("HOME").map_err(|error| {
-        RefusalPayload::io(
-            "$HOME".to_string(),
-            format!("HOME environment variable unavailable: {error}"),
-        )
-    })?;
-    Ok(PathBuf::from(home).join(".epistemic").join("profiles"))
+    crate::paths::profile_dir_for_read()
+        .map_err(|error| RefusalPayload::io("profile directory".to_string(), error.to_string()))
 }

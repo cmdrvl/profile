@@ -51,7 +51,7 @@ fn witness_append_and_query_honor_epistemic_witness_override() {
         .assert();
     common::assert_success_exit!(stats_assert);
     assert_eq!(ledger_line_count_at(&ledger_path), 1);
-    assert!(!home.join(".epistemic").join("witness.jsonl").exists());
+    assert!(!canonical_witness_path(home).exists());
     let record = read_ledger_record(&ledger_path, 0);
     assert_eq!(
         record.get("version").and_then(|value| value.as_str()),
@@ -147,6 +147,9 @@ fn witness_query_last_count_read_ledger_deterministically() {
     let count_envelope = parse_stdout_json(&count_assert);
     common::assert_success_exit!(count_assert);
     assert_json_envelope_shape(&count_envelope);
+    assert!(canonical_witness_path(home).exists());
+    let migration = fs::read_to_string(home.join(".cmdrvl/migrations/applied.jsonl")).unwrap();
+    assert!(migration.contains("\"path_class\":\"witness_ledger\""));
     assert_eq!(
         count_envelope
             .get("result")
@@ -246,7 +249,7 @@ fn json_envelope_exposes_witness_id_only_when_append_succeeds() {
 }
 
 fn ledger_line_count(home: &std::path::Path) -> usize {
-    ledger_line_count_at(&home.join(".epistemic").join("witness.jsonl"))
+    ledger_line_count_at(&canonical_witness_path(home))
 }
 
 fn ledger_line_count_at(path: &std::path::Path) -> usize {
@@ -265,4 +268,11 @@ fn read_ledger_record(path: &std::path::Path, index: usize) -> serde_json::Value
         .nth(index)
         .expect("expected witness record");
     serde_json::from_str(line).expect("witness line should parse")
+}
+
+fn canonical_witness_path(home: &std::path::Path) -> std::path::PathBuf {
+    home.join(".cmdrvl")
+        .join("state")
+        .join("witness")
+        .join("witness.jsonl")
 }

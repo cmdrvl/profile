@@ -368,12 +368,17 @@ of the CLI. There is no `doctor --fix` mode.
 
 With `--json`, refusals are emitted in the unified output envelope (`outcome=REFUSAL`, refusal detail in `result`). Without `--json`, refusals are human-readable errors on stderr with the refusal code.
 
+### Managed paths
+
+- Frozen profile lookup: `~/.cmdrvl/config/profile/profiles/`; legacy `~/.epistemic/profiles/` is copied on first default use.
+- Fabric config for `push`/`pull`: `$EPISTEMIC_FABRIC_URL` or `~/.cmdrvl/config/profile/config.toml`; legacy `~/.epistemic/config.toml` is copied on first default use.
+
 ### Witness behavior
 
 - Witness append is enabled for: `freeze`, `validate`, `lint`, `slice`, `stats`, `suggest-key`
 - Witness append is skipped for: `draft new`, `draft init`, `emit-discovery`, `list`, `show`, `diff`, `push`, `pull`
 - `--no-witness` disables witness writes without changing domain outcome or exit semantics
-- Ledger path: `$EPISTEMIC_WITNESS` or `~/.epistemic/witness.jsonl`
+- Ledger path: `$EPISTEMIC_WITNESS` or `~/.cmdrvl/state/witness/witness.jsonl`; legacy `~/.epistemic/witness.jsonl` is copied on first default use.
 - Witness append failures warn on stderr and do not change primary command outcome/exit code
 
 ---

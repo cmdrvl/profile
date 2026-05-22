@@ -174,7 +174,7 @@ profile freeze <DRAFT> --family <FAMILY> --version <INT> --out <FILE>
   --out <FILE>           Output path for frozen profile
 
 profile list [--json]
-  (v0.1 searches ~/.epistemic/profiles/; built-ins and EPISTEMIC_PROFILE_PATH are deferred)
+  (v0.1 searches ~/.cmdrvl/config/profile/profiles/; legacy ~/.epistemic/profiles/ is copied on first default use; built-ins and EPISTEMIC_PROFILE_PATH are deferred)
 
 profile show <PROFILE_ID> [--json]
 
@@ -303,7 +303,7 @@ freeze (SUCCESS):
 
 list (SUCCESS):
   { "profiles": [
-      { "profile_id": "csv.loan_tape.core.v0", "profile_family": "csv.loan_tape.core", "profile_version": 0, "path": "~/.epistemic/profiles/csv.loan_tape.core.v0.yaml" }
+      { "profile_id": "csv.loan_tape.core.v0", "profile_family": "csv.loan_tape.core", "profile_version": 0, "path": "~/.cmdrvl/config/profile/profiles/csv.loan_tape.core.v0.yaml" }
   ] }
 
 show (SUCCESS):
@@ -463,7 +463,7 @@ Report tools accept `--profile <PATH>` or `--profile-id <ID>` (mutually exclusiv
 
 1. Explicit `--profile <PATH>` (file path)
 2. `--profile-id <ID>` resolved via (first match wins):
-   a. `~/.epistemic/profiles/` (v0.1)
+   a. `~/.cmdrvl/config/profile/profiles/` (v0.1; copies legacy `~/.epistemic/profiles/` on first default use)
 
 **Filename convention:** Frozen profiles are stored as `<profile_id>.yaml` (e.g., `csv.loan_tape.core.v0.yaml`). `list` scans resolution directories for `*.yaml` files and parses the `profile_id` field. `show` resolves by matching the requested ID against the `profile_id` field in scanned files (not by filename alone, though the convention makes scanning fast).
 
@@ -472,7 +472,7 @@ Built-in profiles and `EPISTEMIC_PROFILE_PATH` resolution are deferred in v0.1.
 ```bash
 # List available profiles
 profile list
-# csv.loan_tape.core.v0 (~/.epistemic/profiles/)
+# csv.loan_tape.core.v0 (~/.cmdrvl/config/profile/profiles/)
 ```
 
 ---
@@ -602,7 +602,7 @@ The record follows the standard `witness.v0` schema:
 
 Possible outcomes: `SUCCESS` (exit 0), `ISSUES_FOUND` (exit 1, e.g., lint), `REFUSAL` (exit 2).
 
-**Ledger location:** `~/.epistemic/witness.jsonl` — append-only, one JSON object per line. Each record's `prev` field contains the `id` of the preceding record (or `null` for the first entry), forming a hash chain. The `witness query` subcommand reads this file.
+**Ledger location:** `~/.cmdrvl/state/witness/witness.jsonl` unless `EPISTEMIC_WITNESS` is set. Legacy `~/.epistemic/witness.jsonl` is copied on first default use. The ledger is append-only, one JSON object per line. Each record's `prev` field contains the `id` of the preceding record (or `null` for the first entry), forming a hash chain. The `witness query` subcommand reads this file.
 
 Per-subcommand `params` shapes:
 
@@ -771,7 +771,7 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       k. Exit 0
 
     list:
-      a. Search resolution paths (~/.epistemic/profiles/ in v0.1)
+      a. Search resolution paths (`~/.cmdrvl/config/profile/profiles/` in v0.1)
       b. Parse each *.yaml file, extract profile_id and profile_family
       c. Sort by profile_family (lexicographic), then profile_version (numeric ascending)
       d. Emit list (human or --json)
@@ -793,14 +793,18 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       (deferred in v0.1)
       a. Open and parse profile file       → E_IO if not found; E_INVALID_SCHEMA if not valid
       b. Validate profile is frozen        → E_INVALID_SCHEMA if status is not "frozen"
-      c. POST to data-fabric
-      d. Exit 0 (published) or 2 (transport/refusal)
+      c. Resolve data-fabric URL from EPISTEMIC_FABRIC_URL or ~/.cmdrvl/config/profile/config.toml
+         (legacy ~/.epistemic/config.toml is copied on first default use)
+      d. POST to data-fabric
+      e. Exit 0 (published) or 2 (transport/refusal)
 
     pull:
       (deferred in v0.1)
-      a. GET from data-fabric by profile_id
-      b. Write to --out
-      c. Exit 0 (fetched) or 2 (not found/transport error)
+      a. Resolve data-fabric URL from EPISTEMIC_FABRIC_URL or ~/.cmdrvl/config/profile/config.toml
+         (legacy ~/.epistemic/config.toml is copied on first default use)
+      b. GET from data-fabric by profile_id
+      c. Write to --out
+      d. Exit 0 (fetched) or 2 (not found/transport error)
 
  7. Append witness record (if applicable, if not --no-witness). If witness append fails (E_IO on ledger file), warn on stderr but do not change the exit code — the primary operation already succeeded. The frozen file / report is the artifact; the witness is secondary.
  8. Exit
@@ -1153,7 +1157,7 @@ fn main() -> std::process::ExitCode {
 - **Stats tests:** deterministic column stats output; `--json` produces parseable JSON
 - **Suggest-key tests:** ranking is deterministic; uniqueness and null rate properly weighted
 - **Freeze tests:** draft → frozen with correct SHA256; defaults filled; E_ALREADY_FROZEN on re-freeze; E_BAD_VERSION on invalid family/version format
-- **List tests:** finds user profiles from `~/.epistemic/profiles/` with deterministic ordering
+- **List tests:** finds user profiles from `~/.cmdrvl/config/profile/profiles/` with deterministic ordering and covers legacy `~/.epistemic/profiles/` copy-on-first-use
 - **Show tests:** resolves by profile_id
 - **Diff tests:** identical profiles → exit 0; different profiles → exit 1 with diff
 - **Refusal tests:** each refusal code produces correct envelope
@@ -1181,7 +1185,7 @@ Deferred test tracks:
 - `profile stats` (column counts, null rates, uniqueness scores, `--json`)
 - `profile suggest-key` (deterministic key ranking, `--json`)
 - `profile freeze` (canonicalize, SHA256, immutable output)
-- `profile list` (search `~/.epistemic/profiles/`)
+- `profile list` (search `~/.cmdrvl/config/profile/profiles/`)
 - `profile show` (resolve and display)
 - `profile diff` (structural diff between two profiles)
 - `--version` flag

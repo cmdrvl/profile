@@ -69,6 +69,23 @@
     "slice": true
   },
 
+  "config_paths": {
+    "frozen_profile_lookup": {
+      "canonical": "~/.cmdrvl/config/profile/profiles/",
+      "legacy_copy_on_first_default_use": "~/.epistemic/profiles/"
+    },
+    "fabric_config": {
+      "environment_override": "EPISTEMIC_FABRIC_URL",
+      "canonical": "~/.cmdrvl/config/profile/config.toml",
+      "legacy_copy_on_first_default_use": "~/.epistemic/config.toml"
+    },
+    "witness_ledger": {
+      "environment_override": "EPISTEMIC_WITNESS",
+      "canonical": "~/.cmdrvl/state/witness/witness.jsonl",
+      "legacy_copy_on_first_default_use": "~/.epistemic/witness.jsonl"
+    }
+  },
+
   "pipeline": {
     "upstream": ["fingerprint peek"],
     "downstream": ["rvl", "compare", "shape"]
