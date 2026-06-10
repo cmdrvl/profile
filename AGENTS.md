@@ -35,6 +35,11 @@ profile slice tape.csv --profile-path loan_tape.draft.yaml --out tape.clean.csv
 profile validate loan_tape.draft.yaml
 profile lint loan_tape.draft.yaml --against tape.csv
 
+# One-call agent discovery
+profile --robot-triage
+profile capabilities --json
+profile robot-docs guide
+
 # Freeze when ready (immutable, hashable)
 profile freeze loan_tape.draft.yaml \
   --family csv.loan_tape.core --version 0 \
@@ -77,6 +82,8 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 `profile` is a **mixed-mode tool** — some subcommands produce artifacts (YAML files), others produce reports.
 
 - **`--json`** wraps all output in the unified envelope: `{ version, outcome, exit_code, subcommand, result, profile_ref, witness_id }`
+- **`--robot-triage`** emits a read-only machine triage report without requiring input files
+- **`capabilities --json`** and **`robot-docs guide`** are the top-level agent discovery surfaces
 - Without `--json`, output is free-form and human-optimized
 - Refusals emit structured error details, not ad-hoc text
 

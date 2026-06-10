@@ -23,7 +23,7 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
             .get("subcommands")
             .and_then(|v| v.as_array())
             .map(Vec::len),
-        Some(16)
+        Some(18)
     );
     assert!(
         manifest
@@ -45,6 +45,19 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
                 })
             })
     );
+    for expected in ["capabilities", "robot-docs"] {
+        assert!(
+            manifest
+                .get("subcommands")
+                .and_then(|v| v.as_array())
+                .is_some_and(|subcommands| {
+                    subcommands.iter().any(|subcommand| {
+                        subcommand.get("name").and_then(|v| v.as_str()) == Some(expected)
+                    })
+                }),
+            "operator manifest should include top-level {expected}"
+        );
+    }
 }
 
 #[test]

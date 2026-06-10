@@ -62,10 +62,23 @@ pub fn run() -> u8 {
         return handle_schema(cli.json, SchemaTarget::Profile);
     }
 
+    if cli.robot_triage {
+        let result = Ok(CommandOutput::success(doctor::triage_report()));
+        return if cli.json {
+            output::json::emit("robot triage", result)
+        } else {
+            output::human::emit("robot triage", result)
+        };
+    }
+
     let Some(command) = &cli.command else {
         eprintln!("No subcommand provided.");
         return EXIT_REFUSAL;
     };
+
+    if is_doctor_fix_request(command) {
+        return doctor::emit_fix_unavailable();
+    }
 
     let result = dispatch(command, cli.no_witness, cli.explicit, cli.json);
     let subcommand = command_name(command);
@@ -85,6 +98,8 @@ fn dispatch(
 ) -> HandlerResult {
     match command {
         Command::Doctor(args) => doctor::run(args).map(CommandOutput::success),
+        Command::Capabilities => Ok(CommandOutput::success(doctor::capabilities_report())),
+        Command::RobotDocs(_) => Ok(CommandOutput::success(doctor::robot_docs())),
         Command::Draft(DraftArgs { command }) => match command {
             DraftCommand::New(args) => {
                 draft::new::run(args, no_witness).map(CommandOutput::success)
@@ -121,9 +136,12 @@ fn dispatch(
 
 fn command_name(command: &Command) -> &'static str {
     match command {
+        Command::Capabilities => "capabilities",
+        Command::RobotDocs(_) => "robot-docs",
         Command::Doctor(DoctorArgs {
             robot_triage: true, ..
         }) => "doctor triage",
+        Command::Doctor(DoctorArgs { fix: true, .. }) => "doctor fix",
         Command::Doctor(DoctorArgs {
             command: Some(DoctorCommand::Capabilities),
             ..
@@ -132,6 +150,10 @@ fn command_name(command: &Command) -> &'static str {
             command: Some(DoctorCommand::RobotDocs),
             ..
         }) => "doctor robot-docs",
+        Command::Doctor(DoctorArgs {
+            command: Some(DoctorCommand::Fix),
+            ..
+        }) => "doctor fix",
         Command::Doctor(_) => "doctor health",
         Command::Draft(DraftArgs { command }) => match command {
             DraftCommand::New(_) => "draft new",
@@ -155,6 +177,17 @@ fn command_name(command: &Command) -> &'static str {
             WitnessCommand::Count(_) => "witness count",
         },
     }
+}
+
+fn is_doctor_fix_request(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Doctor(DoctorArgs { fix: true, .. })
+            | Command::Doctor(DoctorArgs {
+                command: Some(DoctorCommand::Fix),
+                ..
+            })
+    )
 }
 
 fn handle_describe(json_output: bool) -> u8 {

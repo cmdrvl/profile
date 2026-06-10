@@ -118,6 +118,8 @@ The list below shows the full interface roadmap. v0.1 ships the subset in [Scope
 
 ```
 Commands:
+  capabilities           Top-level machine-readable capability contract for headless agents
+  robot-docs             Top-level paste-ready operating guide for headless agents
   doctor                 Read-only diagnostic surface for headless agents
   draft new              Create a new draft profile (blank template)
   draft init <DATASET>   Create a draft profile from a real dataset (CSV header-driven)
@@ -190,15 +192,23 @@ profile push <FROZEN_PROFILE>
 profile pull <PROFILE_ID> --out <DIR>
   (deferred in v0.1; fetches from data-fabric via thin HTTP wrapper)
 
+profile --robot-triage
+profile capabilities --json
+profile robot-docs guide
+  (top-level, read-only agent discovery surfaces; do not read profile files, datasets, column registries, stdin, witness ledgers, or network endpoints)
+
 profile doctor <health|capabilities|robot-docs> [--json]
 profile doctor --robot-triage
+profile doctor --fix
   (read-only diagnostic surface; does not read profile files, datasets, column registries, stdin, witness ledgers, or network endpoints; does not write profile YAML, witness records, .doctor artifacts, or remote data)
+  (`--fix` is unavailable in this release and exits 2 with stderr-only guidance to `profile --robot-triage`, `profile capabilities --json`, and `profile robot-docs guide`)
 ```
 
 ### Common flags (all subcommands)
 
 - `--describe`: Print `operator.json` to stdout and exit 0. Checked before input is validated.
 - `--schema`: Print JSON Schema to stdout and exit 0. Like `--describe`, checked before input is validated. `profile --schema` emits profile YAML schema; `profile emit-discovery --schema` emits `profile.discovery.v0` schema.
+- `--robot-triage`: Print a read-only machine triage report and exit 0 without requiring profile or dataset paths.
 - `--version`: Print `profile <semver>` to stdout and exit 0.
 - `--no-witness`: Suppress witness ledger recording.
 

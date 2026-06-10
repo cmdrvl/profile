@@ -44,6 +44,11 @@ profile draft init loan_tape.csv --out loan_tape.draft.yaml
 profile validate loan_tape.draft.yaml
 profile lint loan_tape.draft.yaml --against loan_tape.csv
 
+# Agent discovery: read-only and safe to run before paths are known
+profile --robot-triage
+profile capabilities --json
+profile robot-docs guide
+
 # 3) Freeze to an immutable profile
 profile freeze loan_tape.draft.yaml \
   --family csv.loan_tape.core \
@@ -169,6 +174,27 @@ Any semantic change requires a new `profile_version` and a new `profile_id`.
 ---
 
 ## Subcommands
+
+### `profile --robot-triage`
+
+Emit a read-only machine triage report without requiring a profile or dataset path.
+This is the first command an agent should run when it needs the current CLI contract.
+
+### `profile capabilities`
+
+Print the supported agent surfaces and side-effect boundaries:
+
+```bash
+profile capabilities --json
+```
+
+### `profile robot-docs`
+
+Print a paste-ready operating guide for headless agents:
+
+```bash
+profile robot-docs guide
+```
 
 ### `profile draft init`
 

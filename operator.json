@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "profile",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Creates, validates, and freezes column-scoping profiles for report tools",
   "repository": "https://github.com/cmdrvl/profile",
   "license": "MIT",
@@ -11,7 +11,8 @@
     "binary": "profile",
     "output_mode": "mixed",
     "output_schema": "profile.v0",
-    "json_flag": "--json"
+    "json_flag": "--json",
+    "robot_triage_flag": "--robot-triage"
   },
 
   "arguments": [],
@@ -27,6 +28,8 @@
 
   "subcommands": [
     { "name": "doctor", "description": "Read-only diagnostic surface for headless agents" },
+    { "name": "capabilities", "description": "Top-level machine-readable capability contract for headless agents" },
+    { "name": "robot-docs", "description": "Top-level paste-ready operating guide for headless agents" },
     { "name": "draft new", "description": "Create blank draft template" },
     { "name": "draft init", "description": "Create draft from dataset header" },
     { "name": "validate", "description": "Validate profile against schema" },
@@ -66,7 +69,14 @@
     "profile_aware": true,
     "streaming": false,
     "pre_parse": true,
-    "slice": true
+    "slice": true,
+    "robot_triage": true,
+    "agent_surfaces": {
+      "robot_triage": "profile --robot-triage",
+      "capabilities": "profile capabilities --json",
+      "robot_docs": "profile robot-docs guide",
+      "doctor_fix_refusal": "profile doctor --fix"
+    }
   },
 
   "config_paths": {

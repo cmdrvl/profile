@@ -34,6 +34,7 @@ fn emit_human_value(subcommand: &str, value: &Value) {
         "diff" => emit_diff_result(value),
         "push" => emit_push_result(value),
         "pull" => emit_pull_result(value),
+        "robot-docs" => emit_doctor_robot_docs(value),
         "doctor robot-docs" => emit_doctor_robot_docs(value),
         "describe" => emit_describe_result(value),
         "schema" => emit_schema_result(value),
