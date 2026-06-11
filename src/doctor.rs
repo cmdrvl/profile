@@ -245,6 +245,34 @@ pub fn capabilities_report() -> Value {
             "behavior": "exits 2, emits only stderr, and names read-only alternatives",
             "reason": "No profile-specific fixer has detector, backup, inverse, and fixture coverage yet."
         },
+        "composition": {
+            "family": {
+                "name": "cmdrvl-spine",
+                "siblings": [
+                    {"tool": "fingerprint", "capabilities": "fingerprint capabilities --json"},
+                    {"tool": "canon", "capabilities": "canon doctor capabilities --json"},
+                    {"tool": "profile", "capabilities": "profile capabilities --json"},
+                    {"tool": "shape", "capabilities": "shape capabilities --json"},
+                    {"tool": "rvl", "capabilities": "rvl capabilities --json"}
+                ]
+            },
+            "role": "column-scope authoring and freezing before shape/rvl report tools",
+            "position": "after fingerprint peek or canon normalization, before shape/rvl",
+            "accepts": ["CSV dataset", "fingerprint peek JSON", "column registry", "draft profile YAML"],
+            "produces": ["draft profile YAML", "frozen profile YAML", "sliced CSV"],
+            "canonical_chain": [
+                "fingerprint peek tape.csv --json --suggest > tape.peek.json",
+                "profile draft init tape.csv --from-peek tape.peek.json --out loan_tape.draft.yaml",
+                "profile freeze loan_tape.draft.yaml --family csv.loan_tape.core --version 0 --out profiles/csv.loan_tape.core.v0.yaml",
+                "shape old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json > evidence/shape.report.json",
+                "rvl old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json > evidence/rvl.report.json"
+            ],
+            "agent_rules": [
+                "Use profile when shape/rvl should compare only an explicit column scope.",
+                "Seed drafts from fingerprint peek when pre-parse or multi-row header hints exist.",
+                "Freeze profiles before reusing them in repeatable evidence pipelines."
+            ]
+        },
         "detectors": detector_contracts(),
         "side_effects": side_effects(),
         "domain_boundaries": domain_boundaries()
@@ -380,6 +408,13 @@ Use:
 - profile doctor --fix
 
 The doctor does not read profile files, datasets, column registries, stdin, witness ledgers, or network endpoints. It does not write profile YAML, witness records, .doctor artifacts, or remote data.
+
+Composition:
+- fingerprint peek tape.csv --json --suggest > tape.peek.json
+- profile draft init tape.csv --from-peek tape.peek.json --out loan_tape.draft.yaml
+- profile freeze loan_tape.draft.yaml --family csv.loan_tape.core --version 0 --out profiles/csv.loan_tape.core.v0.yaml
+- shape old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json > evidence/shape.report.json
+- rvl old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json > evidence/rvl.report.json
 
 Do not use profile doctor as a replacement for validation or linting. Once explicit paths are known, use profile validate <FILE> --json --no-witness or profile lint <PROFILE> --against <DATASET> --json --no-witness.
 

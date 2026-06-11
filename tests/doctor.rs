@@ -64,6 +64,23 @@ fn top_level_capabilities_json_lists_agent_surfaces() {
             .and_then(|entry| entry.as_str()),
         Some("profile doctor --fix")
     );
+    assert_eq!(
+        envelope
+            .get("result")
+            .and_then(|result| result.get("composition"))
+            .and_then(|composition| composition.get("family"))
+            .and_then(|family| family.get("name"))
+            .and_then(|entry| entry.as_str()),
+        Some("cmdrvl-spine")
+    );
+    assert_eq!(
+        envelope
+            .get("result")
+            .and_then(|result| result.get("composition"))
+            .and_then(|composition| composition.get("role"))
+            .and_then(|entry| entry.as_str()),
+        Some("column-scope authoring and freezing before shape/rvl report tools")
+    );
 }
 
 #[test]
@@ -77,6 +94,9 @@ fn top_level_robot_docs_guide_prints_plain_guidance() {
     assert!(stdout.contains("profile --robot-triage"));
     assert!(stdout.contains("profile capabilities --json"));
     assert!(stdout.contains("profile robot-docs guide"));
+    assert!(stdout.contains("Composition:"));
+    assert!(stdout.contains("profile draft init tape.csv --from-peek tape.peek.json"));
+    assert!(stdout.contains("shape old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml"));
     assert!(stdout.contains("profile doctor --fix is unavailable"));
 }
 
@@ -190,6 +210,25 @@ fn doctor_capabilities_json_lists_agent_surface() {
     ] {
         assert!(detector_ids.contains(&expected));
     }
+
+    assert_eq!(
+        envelope
+            .get("result")
+            .and_then(|result| result.get("composition"))
+            .and_then(|composition| composition.get("canonical_chain"))
+            .and_then(|chain| chain.get(0))
+            .and_then(|entry| entry.as_str()),
+        Some("fingerprint peek tape.csv --json --suggest > tape.peek.json")
+    );
+    assert!(
+        envelope
+            .get("result")
+            .and_then(|result| result.get("composition"))
+            .and_then(|composition| composition.get("canonical_chain"))
+            .and_then(|chain| chain.get(4))
+            .and_then(|entry| entry.as_str())
+            .is_some_and(|command| command.contains("rvl old.csv new.csv --profile"))
+    );
 }
 
 #[test]
