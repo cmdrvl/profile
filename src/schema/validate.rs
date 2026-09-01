@@ -46,8 +46,23 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
 
     validate_pre_parse(profile)?;
 
-    if profile.key.iter().any(|column| column.trim().is_empty()) {
-        return Err(invalid_schema("key", "columns must be non-empty strings"));
+    for (index, column) in profile.key.iter().enumerate() {
+        if column.trim().is_empty() {
+            return Err(invalid_schema(
+                format!("key[{index}]"),
+                "must be a non-empty string",
+            ));
+        }
+
+        if let Some(first_index) = profile.key[..index]
+            .iter()
+            .position(|candidate| candidate == column)
+        {
+            return Err(invalid_schema(
+                format!("key[{index}]"),
+                format!("duplicate key column '{column}' first declared at key[{first_index}]"),
+            ));
+        }
     }
 
     if profile

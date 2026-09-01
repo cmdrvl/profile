@@ -14,6 +14,7 @@ This fixture corpus is shared across `profile` unit and integration tests.
 - **Draft tests (`bd-2yy`)**
   - `profiles/valid/draft_minimal.yaml`
   - `profiles/valid/draft_with_key.yaml`
+  - `profiles/valid/draft_composite_key.yaml` — ordered composite key with a repeated first component in `loan_tape_basic.csv`; suitable for downstream shape/rvl conformance
   - `datasets/valid/loan_tape_basic.csv`
 - **Schema + lint tests (`bd-8rq`)**
   - `profiles/invalid/*`

@@ -154,11 +154,12 @@ pub fn generate_profile_schema() -> Value {
             },
             "key": {
                 "type": "array",
+                "uniqueItems": true,
                 "items": {
                     "type": "string",
                     "minLength": 1
                 },
-                "description": "Key column names for deduplication"
+                "description": "Ordered zero-or-more unique, non-empty column names defining row identity"
             },
             "include_columns": {
                 "type": "array",

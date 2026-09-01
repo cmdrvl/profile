@@ -5,6 +5,7 @@ use std::fs;
 use common::{
     assert_json_envelope_shape, fixture_path, parse_stdout_json, profile_cmd, temp_workspace,
 };
+use profile::schema::{Profile, canonical_yaml, compute_profile_sha256};
 use serde_yaml::Value as YamlValue;
 
 #[test]
@@ -281,4 +282,70 @@ include_columns:
         content.contains("column_registry: registries/annex_columns_v0"),
         "expected frozen profile to retain column_registry field"
     );
+}
+
+#[test]
+fn freeze_preserves_composite_key_order_and_hashes_order_as_identity() {
+    let workspace = temp_workspace();
+    let ordered_out = workspace.path().join("ordered.yaml");
+    let reordered_draft = workspace.path().join("reordered-draft.yaml");
+    let reordered_out = workspace.path().join("reordered.yaml");
+
+    fs::write(
+        &reordered_draft,
+        "schema_version: 1\nstatus: draft\nformat: csv\nkey:\n  - loan_id\n  - property_type\ninclude_columns:\n  - loan_id\n  - balance\n  - rate\n  - property_type\nequivalence:\n  float_decimals: 6\n  trim_strings: true\n",
+    )
+    .expect("reordered draft should be written");
+
+    for (draft, output) in [
+        (
+            fixture_path("profiles/valid/draft_composite_key.yaml"),
+            ordered_out.as_path(),
+        ),
+        (reordered_draft.clone(), reordered_out.as_path()),
+    ] {
+        let assert = profile_cmd()
+            .arg("--no-witness")
+            .arg("freeze")
+            .arg(draft)
+            .arg("--family")
+            .arg("csv.loan_tape.composite")
+            .arg("--version")
+            .arg("0")
+            .arg("--out")
+            .arg(output)
+            .assert();
+        common::assert_success_exit!(assert);
+    }
+
+    let ordered = Profile::from_yaml(
+        &fs::read_to_string(&ordered_out).expect("ordered frozen profile should be readable"),
+    )
+    .expect("ordered frozen profile should parse");
+    let reordered = Profile::from_yaml(
+        &fs::read_to_string(&reordered_out).expect("reordered frozen profile should be readable"),
+    )
+    .expect("reordered frozen profile should parse");
+
+    assert_eq!(ordered.key, ["property_type", "loan_id"]);
+    assert_eq!(reordered.key, ["loan_id", "property_type"]);
+
+    for frozen in [&ordered, &reordered] {
+        let canonical = canonical_yaml(frozen).expect("frozen profile should canonicalize");
+        let expected_sha = compute_profile_sha256(&canonical);
+        assert_eq!(
+            frozen.profile_sha256.as_deref(),
+            Some(expected_sha.as_str())
+        );
+
+        let round_trip = Profile::from_yaml(
+            &frozen
+                .to_yaml()
+                .expect("frozen profile should serialize for round trip"),
+        )
+        .expect("round-tripped profile should parse");
+        assert_eq!(round_trip.key, frozen.key);
+    }
+
+    assert_ne!(ordered.profile_sha256, reordered.profile_sha256);
 }

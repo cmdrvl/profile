@@ -150,6 +150,11 @@ fn schema_json_short_circuits_before_invalid_freeze_args_are_parsed() {
             .and_then(|v| v.as_str()),
         Some("https://epistemic.so/schemas/profile.v1.json")
     );
+    assert_eq!(envelope["result"]["properties"]["key"]["uniqueItems"], true);
+    assert_eq!(
+        envelope["result"]["properties"]["key"]["items"]["minLength"],
+        1
+    );
     assert_eq!(stderr, "");
 }
 

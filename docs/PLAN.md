@@ -58,7 +58,7 @@ The `fingerprint` tool does not use profiles. Profiles are consumed by report to
 profile draft init tape.csv --out loan_tape.draft.yaml
 
 # Iterate with a draft (cheap, exploratory)
-rvl nov.csv dec.csv --key loan_id --profile loan_tape.draft.yaml --json
+rvl nov.csv dec.csv --profile loan_tape.draft.yaml --json
 
 # Freeze when the answer is useful (immutable, hashable)
 profile freeze loan_tape.draft.yaml \
@@ -66,7 +66,7 @@ profile freeze loan_tape.draft.yaml \
   --out profiles/csv.loan_tape.core.v0.yaml
 
 # Use frozen profile for production
-rvl nov.csv dec.csv --key loan_id --profile profiles/csv.loan_tape.core.v0.yaml --json
+rvl nov.csv dec.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
 ```
 
 Profile outputs flow to report tools, not to the stream pipeline:
@@ -350,7 +350,9 @@ schema_version: 1
 status: draft
 format: csv
 
-key: [loan_id]
+key:
+  - loan_id
+  - property_id
 
 pre_parse:
   slice:
@@ -361,6 +363,7 @@ pre_parse:
 
 include_columns:
   - loan_id
+  - property_id
   - balance
   - rate
   - maturity_date
@@ -393,9 +396,11 @@ equivalence:
 
 key:
   - loan_id
+  - property_id
 
 include_columns:
   - loan_id
+  - property_id
   - balance
   - rate
   - maturity_date
@@ -422,8 +427,17 @@ The frozen file on disk uses canonical field order and block style, but includes
 | `equivalence.order` | string | no (default on freeze) | `"order-invariant"` (default) or `"order-sensitive"` |
 | `equivalence.float_decimals` | int | no | Decimal places for float comparison |
 | `equivalence.trim_strings` | bool | no | Trim whitespace before comparison |
-| `key` | array | no | Key column(s) for row alignment |
+| `key` | array | no | Ordered zero-or-more column list for row alignment; entries must be non-empty and unique |
 | `include_columns` | array | yes | Columns to analyze (in order). Must be non-empty for `freeze`; `validate` accepts `[]` (an empty draft is schema-valid but unfrozen) |
+
+### Key list contract
+
+- `key: []` means no key is declared. The list may contain one or more column names when a key is declared.
+- Component order is semantic: `[loan_id, property_id]` and `[property_id, loan_id]` are different composite keys and produce different frozen profile hashes.
+- Canonical rendering preserves every component in declared order. It never sorts or deduplicates the list.
+- Empty or whitespace-only component names and duplicate component names are schema errors. Validation reports the first invalid list position deterministically.
+- `lint` resolves dataset headers through `column_registry` when configured, then checks every key component against those canonicalized headers in declared order.
+- Downstream tools must consume the complete ordered list. They may use a joined string as a display label, but tuple identity must preserve component boundaries.
 
 ---
 
@@ -441,7 +455,7 @@ v0.1 validates family/version syntax and non-negative integer constraints. Globa
 - Include/exclude column changes
 - Column registry path changes or alias-resolution contract changes
 - Normalization changes (trim, float quantization, date format)
-- Key requirement changes
+- Key component additions, removals, or reordering
 - Equivalence changes (order-sensitive ↔ order-invariant)
 - Hash algorithm or canonicalization changes
 
@@ -673,8 +687,9 @@ Canonicalization produces a deterministic YAML byte string for SHA256 hashing. T
 1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `fingerprint_ref`, `pre_parse`, `hashing`, `equivalence`, `key`, `include_columns`
 2. **Nested field order** within `hashing`: `algorithm`. Within `equivalence`: `order`, `float_decimals`, `trim_strings` (omitted fields stay omitted)
 3. **YAML style**: block style only (no flow sequences/mappings). Strings are unquoted unless they require quoting per YAML spec. Arrays use `- item` form (one item per line)
-4. **Trailing newline**: exactly one `\n` at end of file
-5. **No comments, no blank lines, no document markers (`---` / `...`)**
+4. **Array order**: preserve source order for `key` and `include_columns`; never sort either list
+5. **Trailing newline**: exactly one `\n` at end of file
+6. **No comments, no blank lines, no document markers (`---` / `...`)**
 
 `profile_sha256` is excluded from canonicalization (it is appended to the output file after the hash is computed). The frozen file on disk includes `profile_sha256` as the fourth field (after `profile_family`), but this field is not part of the canonical byte string.
 
@@ -730,7 +745,7 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       b. Open dataset file                 → E_IO if not found or permission denied
       c. Parse dataset header              → E_CSV_PARSE if invalid, E_EMPTY if no header
       d. Check all include_columns exist   → report missing columns (domain finding, not refusal)
-      e. Check key columns exist           → report missing keys (domain finding, not refusal)
+      e. Check every key component exists, in declared order, against canonicalized headers → report missing keys (domain finding, not refusal)
       f. Exit 0 (all clear) or 1 (issues found) or 2 (refusal from steps a-c)
 
     slice:
@@ -1162,11 +1177,11 @@ fn main() -> std::process::ExitCode {
 
 - **Draft new tests:** blank template generation for CSV format
 - **Draft init tests:** header-driven draft creation; `--key auto` sets correct candidate
-- **Validate tests:** valid profiles pass; missing required fields produce E_MISSING_FIELD; other schema violations produce E_INVALID_SCHEMA
-- **Lint tests:** columns exist → pass; missing columns → report issues (exit 1); missing key → report
+- **Validate tests:** valid profiles pass; missing required fields produce E_MISSING_FIELD; empty or duplicate key components produce deterministic E_INVALID_SCHEMA details; other schema violations produce E_INVALID_SCHEMA
+- **Lint tests:** columns exist → pass; missing columns → report issues (exit 1); every ordered composite-key component is checked against canonicalized headers
 - **Stats tests:** deterministic column stats output; `--json` produces parseable JSON
 - **Suggest-key tests:** ranking is deterministic; uniqueness and null rate properly weighted
-- **Freeze tests:** draft → frozen with correct SHA256; defaults filled; E_ALREADY_FROZEN on re-freeze; E_BAD_VERSION on invalid family/version format
+- **Freeze tests:** draft → frozen with correct SHA256; defaults filled; composite-key order survives canonical round trips and changes profile identity; E_ALREADY_FROZEN on re-freeze; E_BAD_VERSION on invalid family/version format
 - **List tests:** finds user profiles from `~/.cmdrvl/config/profile/profiles/` with deterministic ordering and covers legacy `~/.epistemic/profiles/` copy-on-first-use
 - **Show tests:** resolves by profile_id
 - **Diff tests:** identical profiles → exit 0; different profiles → exit 1 with diff

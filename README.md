@@ -59,7 +59,7 @@ profile freeze loan_tape.draft.yaml \
 rvl old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json
 ```
 
-`rvl` is profile-aware today. Check `shape` / `compare` operator contracts before assuming equivalent `--profile` behavior in the current release line.
+`rvl` and `shape` are profile-aware today and consume the complete ordered key list. Check `compare`'s operator contract before assuming equivalent behavior in its current release line.
 
 ---
 
@@ -92,10 +92,11 @@ A draft is cheap to iterate. A frozen profile is immutable and hashable for repr
 vacuum → hashbytes → lock
            ↑
         profile → rvl
-        profile → shape / compare (planned or release-line dependent)
+        profile → shape
+        profile → compare (release-line dependent)
 ```
 
-Profile doesn't sit in the stream pipeline (vacuum → hashbytes → lock). Instead, it produces configuration files that downstream tools can consume where the current runtime contract supports `--profile`. `rvl` is the live consumer today; other integrations are converging by tool/release line. Lock records which profiles were active in its `profiles` array.
+Profile doesn't sit in the stream pipeline (vacuum → hashbytes → lock). Instead, it produces configuration files that downstream tools can consume where the current runtime contract supports `--profile`. `rvl` and `shape` are live consumers today; other integrations are converging by tool/release line. Lock records which profiles were active in its `profiles` array.
 
 ---
 
@@ -132,12 +133,15 @@ pre_parse:
     data_starts_at: 5
 include_columns:
   - loan_id
+  - property_id
   - current_balance
   - note_rate
   - maturity_date
   - property_type
   - occupancy
-key: ["loan_id"]
+key:
+  - loan_id
+  - property_id
 equivalence:
   order: "order-invariant"
   float_decimals: 6
@@ -152,7 +156,7 @@ equivalence:
 | `fingerprint_ref` | string | Optional upstream fingerprint ID used as pre-parse lineage |
 | `pre_parse` | object | Optional CSV slicing directives (`preamble_skip`, `multi_row_header`, `preamble_with_units`) |
 | `include_columns` | string[] | Columns to include in analysis (others ignored) |
-| `key` | string[] | Column(s) used for row alignment/joining |
+| `key` | string[] | Ordered zero-or-more columns used for row alignment; names must be non-empty and unique |
 | `equivalence.order` | string | `"order-invariant"` or `"order-sensitive"` |
 | `equivalence.float_decimals` | integer | Decimal places for float comparison |
 | `equivalence.trim_strings` | boolean | Trim whitespace before string comparison |
@@ -231,7 +235,7 @@ Validate a profile against a dataset:
 profile lint loan_profile.yaml --against loan_tape.csv
 ```
 
-Catches: missing columns, non-unique keys, type mismatches, schema drift.
+Catches: missing columns, missing key components, type mismatches, and schema drift. With a column registry, every key component is checked against canonicalized dataset headers.
 
 ### `profile slice`
 
@@ -325,8 +329,8 @@ cargo build --release
 
 Current runtime support:
 
-- `rvl` accepts `--profile` today for key derivation and column scoping
-- `shape` exposes `--profile` / `--profile-id` flags, but its current operator contract still marks the check-scoping behavior as reserved/deferred
+- `rvl` accepts `--profile` today for complete-key derivation and column scoping
+- `shape` accepts `--profile` / `--profile-id` and evaluates complete ordered profile keys
 - `compare` remains the deferred exhaustive diff tool in the broader spine roadmap
 
 ```bash
@@ -422,7 +426,7 @@ profile lint loan_profile.yaml --against new_tape.csv
 
 ### Key column isn't unique
 
-The column(s) declared in `key` have duplicate values. Use `profile suggest-key` to find better candidates:
+The complete tuple declared in `key` has duplicate values. Component order matters, and every component must be populated. Use `profile suggest-key` to find candidate columns:
 
 ```bash
 profile suggest-key loan_tape.csv
@@ -491,7 +495,7 @@ Fingerprint identifies *what kind* of file something is (template recognition). 
 
 ### Why is key declaration important?
 
-Without a key, report tools like `rvl` can't align rows between two datasets. The key column(s) define how rows map from old to new. `profile suggest-key` helps identify the best candidate.
+Without a key, report tools like `rvl` can't align rows between two datasets. `key` is an ordered zero-or-more list: `[]` declares no key, one item declares a simple key, and multiple items declare a composite tuple. Reordering components changes profile identity. `profile suggest-key` helps identify individual candidate columns.
 
 ### Can profiles be generated programmatically?
 

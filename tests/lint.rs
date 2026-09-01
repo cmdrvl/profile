@@ -278,3 +278,42 @@ include_columns:
         .expect("result.issues should be array");
     assert!(issues.is_empty(), "expected registry-backed lint success");
 }
+
+#[test]
+fn lint_checks_every_composite_key_component_against_canonical_headers() {
+    let workspace = temp_workspace();
+    let registry_dir = workspace.path().join("registries").join("annex_columns_v0");
+    copy_fixture(
+        "registries/annex_columns_v0/registry.json",
+        registry_dir.join("registry.json"),
+    );
+    copy_fixture(
+        "registries/annex_columns_v0/aliases.json",
+        registry_dir.join("aliases.json"),
+    );
+
+    let profile_path = workspace.path().join("profile.yaml");
+    fs::write(
+        &profile_path,
+        "schema_version: 1\nstatus: draft\nformat: csv\ncolumn_registry: registries/annex_columns_v0\nkey:\n  - loan_id_number\n  - detailed_property_type\ninclude_columns:\n  - loan_id_number\n",
+    )
+    .expect("profile fixture write should succeed");
+
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("lint")
+        .arg(&profile_path)
+        .arg("--against")
+        .arg(fixture_path("datasets/valid/loan_tape_alt_headers.csv"))
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_issues_exit!(assert);
+
+    let issues = envelope["result"]["issues"]
+        .as_array()
+        .expect("result.issues should be array");
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0]["kind"], "missing_key");
+    assert_eq!(issues[0]["column"], "detailed_property_type");
+}

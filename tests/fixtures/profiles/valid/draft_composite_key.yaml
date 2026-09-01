@@ -1,0 +1,14 @@
+schema_version: 1
+status: draft
+format: csv
+key:
+  - property_type
+  - loan_id
+include_columns:
+  - loan_id
+  - balance
+  - rate
+  - property_type
+equivalence:
+  float_decimals: 6
+  trim_strings: true

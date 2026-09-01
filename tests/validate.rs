@@ -24,6 +24,63 @@ fn validate_accepts_valid_frozen_profile() {
 }
 
 #[test]
+fn validate_accepts_ordered_composite_key_fixture() {
+    let assert = profile_cmd()
+        .arg("validate")
+        .arg(fixture_path("profiles/valid/draft_composite_key.yaml"))
+        .assert();
+    common::assert_success_exit!(assert);
+}
+
+#[test]
+fn validate_rejects_empty_and_duplicate_key_components_deterministically() {
+    let workspace = common::temp_workspace();
+    let cases = [
+        (
+            "empty-key.yaml",
+            "  - loan_id\n  - '   '\n",
+            "key[1]",
+            "must be a non-empty string",
+        ),
+        (
+            "duplicate-key.yaml",
+            "  - loan_id\n  - property_type\n  - loan_id\n",
+            "key[2]",
+            "duplicate key column 'loan_id' first declared at key[0]",
+        ),
+    ];
+
+    for (file_name, key_yaml, expected_field, expected_error) in cases {
+        let profile_path = workspace.path().join(file_name);
+        fs::write(
+            &profile_path,
+            format!(
+                "schema_version: 1\nstatus: draft\nformat: csv\nkey:\n{key_yaml}include_columns:\n  - loan_id\n"
+            ),
+        )
+        .expect("invalid key profile fixture should be written");
+
+        let assert = profile_cmd()
+            .arg("--json")
+            .arg("validate")
+            .arg(&profile_path)
+            .assert();
+        let envelope = parse_stdout_json(&assert);
+        common::assert_refusal_exit!(assert);
+
+        assert_eq!(envelope["result"]["code"], "E_INVALID_SCHEMA");
+        assert_eq!(
+            envelope["result"]["detail"]["errors"][0]["field"],
+            expected_field
+        );
+        assert_eq!(
+            envelope["result"]["detail"]["errors"][0]["error"],
+            expected_error
+        );
+    }
+}
+
+#[test]
 fn validate_json_success_uses_unified_output_envelope() {
     let assert = profile_cmd()
         .arg("--json")
