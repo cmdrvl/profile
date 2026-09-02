@@ -315,6 +315,146 @@ fn slice_output_hash_is_reproducible_across_runs() {
 }
 
 #[test]
+fn slice_preserves_quoted_newline_fields_as_single_logical_records() {
+    let workspace = temp_workspace();
+    let mut hashes = Vec::new();
+
+    for run in 0..2 {
+        let out = workspace.path().join(format!("quoted_newline_{run}.csv"));
+        let manifest = workspace
+            .path()
+            .join(format!("quoted_newline_{run}.manifest.json"));
+        let assert = profile_cmd()
+            .arg("slice")
+            .arg(fixture_path("slice/quoted_newline.csv"))
+            .arg("--mode")
+            .arg("preamble_skip")
+            .arg("--header-at-row")
+            .arg("1")
+            .arg("--data-starts-at")
+            .arg("2")
+            .arg("--out")
+            .arg(&out)
+            .arg("--emit-manifest")
+            .arg(&manifest)
+            .arg("--json")
+            .arg("--no-witness")
+            .assert();
+        let envelope = parse_stdout_json(&assert);
+        common::assert_success_exit!(assert);
+
+        let clean = fs::read_to_string(&out).expect("quoted newline slice output");
+        assert_eq!(
+            clean,
+            "ID,Note,Amount\n1,\"Line one\nline two\",10\n2,plain,20\n"
+        );
+        assert_eq!(envelope["result"]["rows"]["input_physical_rows"], 3);
+        assert_eq!(envelope["result"]["rows"]["output_data_rows"], 2);
+
+        let manifest_json: Value =
+            serde_json::from_str(&fs::read_to_string(&manifest).expect("quoted newline manifest"))
+                .expect("manifest should parse");
+        assert_eq!(
+            manifest_json["output_hash"],
+            envelope["result"]["output_hash"]
+        );
+        hashes.push(
+            manifest_json["output_hash"]
+                .as_str()
+                .expect("manifest output hash")
+                .to_owned(),
+        );
+    }
+
+    assert_eq!(hashes[0], hashes[1]);
+}
+
+#[test]
+fn slice_decodes_single_byte_source_encoding_to_utf8_output_and_manifest() {
+    let workspace = temp_workspace();
+    let cases = [("windows-1252", "windows-1252"), ("latin1", "latin1")];
+
+    for (requested_encoding, expected_source_encoding) in cases {
+        let input = workspace
+            .path()
+            .join(format!("{expected_source_encoding}.csv"));
+        let out = workspace
+            .path()
+            .join(format!("{expected_source_encoding}.out.csv"));
+        let manifest = workspace
+            .path()
+            .join(format!("{expected_source_encoding}.manifest.json"));
+        fs::write(&input, b"ID,Property\n1,Caf\xe9\n").expect("encoded CSV should be written");
+
+        let assert = profile_cmd()
+            .arg("slice")
+            .arg(&input)
+            .arg("--mode")
+            .arg("preamble_skip")
+            .arg("--header-at-row")
+            .arg("1")
+            .arg("--data-starts-at")
+            .arg("2")
+            .arg("--encoding")
+            .arg(requested_encoding)
+            .arg("--out")
+            .arg(&out)
+            .arg("--emit-manifest")
+            .arg(&manifest)
+            .arg("--json")
+            .arg("--no-witness")
+            .assert();
+        let envelope = parse_stdout_json(&assert);
+        common::assert_success_exit!(assert);
+
+        assert_eq!(
+            fs::read_to_string(&out).expect("output CSV should be UTF-8"),
+            format!("ID,Property\n1,Caf{}\n", '\u{e9}')
+        );
+        assert_eq!(
+            envelope["result"]["source_encoding"].as_str(),
+            Some(expected_source_encoding)
+        );
+        let manifest_json: Value =
+            serde_json::from_str(&fs::read_to_string(&manifest).expect("manifest"))
+                .expect("manifest should parse");
+        assert_eq!(
+            manifest_json["source_encoding"].as_str(),
+            Some(expected_source_encoding)
+        );
+    }
+}
+
+#[test]
+fn slice_refuses_invalid_default_utf8_with_physical_row_and_byte_offset() {
+    let workspace = temp_workspace();
+    let input = workspace.path().join("invalid_utf8.csv");
+    fs::write(&input, b"ID,Property\n1,Caf\xe9\n").expect("invalid utf-8 CSV should be written");
+
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(&input)
+        .arg("--mode")
+        .arg("preamble_skip")
+        .arg("--header-at-row")
+        .arg("1")
+        .arg("--data-starts-at")
+        .arg("2")
+        .arg("--json")
+        .arg("--no-witness")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_refusal_exit!(assert);
+
+    assert_eq!(envelope["result"]["code"], "E_CSV_PARSE");
+    let error = envelope["result"]["detail"]["error"]
+        .as_str()
+        .expect("refusal should include error detail");
+    assert!(error.contains("physical row 2"), "{error}");
+    assert!(error.contains("byte offset"), "{error}");
+}
+
+#[test]
 fn slice_fixture_profiles_round_trip_with_lint() {
     let workspace = temp_workspace();
     let cases = [

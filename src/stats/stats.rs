@@ -9,7 +9,7 @@ use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
 use crate::schema::{
     ValidationMode, build_header_index, load_column_registry_aliases, parse_profile_yaml,
-    resolve_registry_path, validate_profile,
+    resolve_registry_path, validate_frozen_registry_hash, validate_profile,
 };
 use crate::witness::append::append_for_command;
 
@@ -163,6 +163,7 @@ fn resolve_selected_columns(
 
         let profile = parse_profile_yaml(&profile_content)?;
         validate_profile(&profile, ValidationMode::Validate)?;
+        validate_frozen_registry_hash(profile_path, &profile)?;
         let profile_ref = ProfileRef::from_profile(&profile);
         let column_aliases = profile
             .column_registry

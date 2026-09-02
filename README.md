@@ -27,7 +27,7 @@ Your dataset has 42 columns. 15 of them matter for this analysis. The key is `lo
 
 - **Draft → freeze lifecycle** — `profile draft init` reads a CSV header and generates a starting profile. Edit it. Lint it against real data. When it's right, `profile freeze` makes it immutable and content-addressed.
 - **Key intelligence** — `profile suggest-key` ranks candidate key columns by uniqueness, null rate, and type. No guessing.
-- **Registry-backed header canonicalization** — optional `column_registry` lets the same profile survive heterogeneous raw headers by resolving them to canonical column IDs before scoping.
+- **Registry-backed header canonicalization** — optional `column_registry` lets the same profile survive heterogeneous raw headers by resolving them to canonical column IDs before scoping. Frozen registry-backed profiles also record `column_registry_hash`, so registry byte drift is refused on replay.
 - **Witnessed pre-parse slicing** — optional `pre_parse` directives describe how to remove export preambles, merge multi-row headers, and capture units rows before downstream tools read the CSV.
 - **One file, reusable scoping** — `rvl` consumes frozen profiles today, and the same artifact is the intended scoping surface for `shape`, `compare`, and `lock` as those integrations settle. Declare your domain choices once.
 - **Schema drift detection** — `profile lint --against data.csv` catches columns that disappeared, keys that aren't unique, and types that shifted.
@@ -78,6 +78,7 @@ profile freeze loan_tape.draft.yaml \
   --out profiles/csv.loan_tape.core.v0.yaml
 # writes: profiles/csv.loan_tape.core.v0.yaml
 # frozen profile includes: profile_id, profile_family, profile_version, profile_sha256
+# registry-backed frozen profiles also include: column_registry_hash
 ```
 
 A draft is cheap to iterate. A frozen profile is immutable and hashable for reproducible downstream analysis.
@@ -153,6 +154,7 @@ equivalence:
 | `profile_id` | string | Unique identifier with version suffix |
 | `profile_version` | integer | Monotonically increasing version number |
 | `column_registry` | string | Optional canon registry path used to normalize raw headers to canonical column IDs before scoping |
+| `column_registry_hash` | string | Frozen-only `blake3:<hex>` hash over length-framed registry bytes, present when `column_registry` is set |
 | `fingerprint_ref` | string | Optional upstream fingerprint ID used as pre-parse lineage |
 | `pre_parse` | object | Optional CSV slicing directives (`preamble_skip`, `multi_row_header`, `preamble_with_units`) |
 | `include_columns` | string[] | Columns to include in analysis (others ignored) |
@@ -173,7 +175,7 @@ frozen: true
 # ... rest of profile
 ```
 
-Any semantic change requires a new `profile_version` and a new `profile_id`.
+When `column_registry` is set, `profile freeze` writes `column_registry_hash` into the canonical YAML before computing `profile_sha256`. Any semantic change, including registry byte drift, requires a new `profile_version` and a new `profile_id`.
 
 ---
 
@@ -246,7 +248,7 @@ profile slice vendor_export.csv --profile-path vendor_profile.yaml --out clean.c
 profile slice vendor_export.csv --mode multi_row_header --header-rows 2,3 --data-starts-at 4
 ```
 
-Without `--out` in human mode, `slice` writes the clean CSV to stdout. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows. When a profile is provided and slice flags override profile directives, `slice` emits explicit warnings.
+Without `--out` in human mode, `slice` writes the clean CSV to stdout. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, source encoding, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows. `pre_parse.slice.encoding` and `--encoding` support strict `utf-8`, `windows-1252`, and `latin1` input; output CSV is always UTF-8. When a profile is provided and slice flags override profile directives, `slice` emits explicit warnings.
 
 ### `profile emit-discovery`
 
@@ -348,7 +350,8 @@ rvl old.csv new.csv --profile loan_profile.yaml --json
     {
       "profile_id": "csv.loan_tape.core.v0",
       "profile_version": 0,
-      "profile_sha256": "sha256:a1b2c3d4..."
+      "profile_sha256": "sha256:a1b2c3d4...",
+      "column_registry_hash": "blake3:..."
     }
   ]
 }

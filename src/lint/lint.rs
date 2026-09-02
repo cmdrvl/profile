@@ -8,7 +8,7 @@ use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
 use crate::schema::{
     ValidationMode, build_header_index, load_column_registry_aliases, parse_profile_yaml,
-    resolve_registry_path, validate_profile,
+    resolve_registry_path, validate_frozen_registry_hash, validate_profile,
 };
 use crate::witness::append::append_for_command;
 
@@ -18,6 +18,7 @@ pub fn run(args: &LintArgs, no_witness: bool) -> Result<CommandOutput, RefusalPa
     })?;
     let profile = parse_profile_yaml(&profile_content)?;
     validate_profile(&profile, ValidationMode::Validate)?;
+    validate_frozen_registry_hash(&args.profile, &profile)?;
 
     let file = File::open(&args.against).map_err(|error| {
         RefusalPayload::io(args.against.display().to_string(), error.to_string())

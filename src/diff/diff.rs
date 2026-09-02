@@ -53,6 +53,14 @@ fn compare_profiles(a: &Profile, b: &Profile) -> Vec<ProfileDifference> {
         });
     }
 
+    if a.column_registry_hash != b.column_registry_hash {
+        differences.push(ProfileDifference {
+            field: "column_registry_hash".to_string(),
+            a_value: json!(a.column_registry_hash),
+            b_value: json!(b.column_registry_hash),
+        });
+    }
+
     if a.fingerprint_ref != b.fingerprint_ref {
         differences.push(ProfileDifference {
             field: "fingerprint_ref".to_string(),

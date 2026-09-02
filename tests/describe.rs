@@ -155,6 +155,10 @@ fn schema_json_short_circuits_before_invalid_freeze_args_are_parsed() {
         envelope["result"]["properties"]["key"]["items"]["minLength"],
         1
     );
+    assert_eq!(
+        envelope["result"]["properties"]["column_registry_hash"]["pattern"],
+        "^blake3:[a-f0-9]{64}$"
+    );
     assert_eq!(stderr, "");
 }
 

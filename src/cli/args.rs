@@ -236,7 +236,7 @@ pub struct SliceArgs {
     #[arg(long)]
     pub delimiter: Option<String>,
 
-    /// Encoding label. Only utf-8 is supported.
+    /// Encoding label: utf-8, windows-1252, or latin1.
     #[arg(long)]
     pub encoding: Option<String>,
 

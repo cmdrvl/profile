@@ -6,6 +6,7 @@ use csv::StringRecord;
 use serde::Deserialize;
 
 use crate::refusal::RefusalPayload;
+use crate::schema::profile::{Profile, ProfileStatus};
 
 const COLUMN_NAME_CANONICAL_TYPE: &str = "column_name";
 
@@ -56,30 +57,9 @@ pub fn load_column_registry_aliases(
     }
 
     let registry_json_path = registry_dir.join("registry.json");
-    let registry_json = fs::read_to_string(&registry_json_path).map_err(|error| {
-        RefusalPayload::io(registry_json_path.display().to_string(), error.to_string())
-    })?;
-    serde_json::from_str::<serde_json::Value>(&registry_json).map_err(|error| {
-        RefusalPayload::invalid_schema_single(
-            "column_registry",
-            format!(
-                "failed to parse registry definition '{}': {error}",
-                registry_json_path.display()
-            ),
-        )
-    })?;
+    read_registry_json_object(&registry_json_path)?;
 
-    let mut mapping_paths = fs::read_dir(registry_dir)
-        .map_err(|error| RefusalPayload::io(registry_dir.display().to_string(), error.to_string()))?
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| {
-            path.is_file()
-                && path.extension().is_some_and(|ext| ext == "json")
-                && path.file_name() != Some("registry.json".as_ref())
-                && path.file_name() != Some("_build.json".as_ref())
-        })
-        .collect::<Vec<_>>();
-    mapping_paths.sort();
+    let mapping_paths = mapping_files(registry_dir)?;
 
     let mut aliases = HashMap::new();
     for path in mapping_paths {
@@ -114,6 +94,117 @@ pub fn load_column_registry_aliases(
     }
 
     Ok(aliases)
+}
+
+pub fn registry_content_hash(registry_dir: &Path) -> Result<String, RefusalPayload> {
+    if !registry_dir.exists() || !registry_dir.is_dir() {
+        return Err(RefusalPayload::io(
+            registry_dir.display().to_string(),
+            "registry directory not found",
+        ));
+    }
+
+    let mut framed = Vec::new();
+    let registry_json_path = registry_dir.join("registry.json");
+    let registry_json_bytes = read_registry_json_object(&registry_json_path)?;
+    frame_registry_file("registry.json", &registry_json_bytes, &mut framed);
+
+    for path in mapping_files(registry_dir)? {
+        let relative_path = registry_relative_file_name(&path)?;
+        let bytes = fs::read(&path)
+            .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
+        frame_registry_file(&relative_path, &bytes, &mut framed);
+    }
+
+    Ok(format!("blake3:{}", blake3::hash(&framed).to_hex()))
+}
+
+pub fn validate_frozen_registry_hash(
+    profile_path: &Path,
+    profile: &Profile,
+) -> Result<(), RefusalPayload> {
+    if !matches!(profile.status, ProfileStatus::Frozen) {
+        return Ok(());
+    }
+
+    let Some(registry_ref) = profile.column_registry.as_deref() else {
+        return Ok(());
+    };
+    let declared = profile
+        .column_registry_hash
+        .as_deref()
+        .ok_or_else(|| RefusalPayload::missing_field("column_registry_hash"))?;
+    let resolved_registry = resolve_registry_path(profile_path, registry_ref);
+    let computed = registry_content_hash(&resolved_registry)?;
+
+    if computed != declared {
+        return Err(RefusalPayload::invalid_schema_single(
+            "column_registry_hash",
+            format!("registry content hash drift: declared {declared}, computed {computed}"),
+        ));
+    }
+
+    Ok(())
+}
+
+fn mapping_files(registry_dir: &Path) -> Result<Vec<PathBuf>, RefusalPayload> {
+    let mut mapping_paths = fs::read_dir(registry_dir)
+        .map_err(|error| RefusalPayload::io(registry_dir.display().to_string(), error.to_string()))?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.is_file()
+                && path.extension().is_some_and(|ext| ext == "json")
+                && path.file_name() != Some("registry.json".as_ref())
+                && path.file_name() != Some("_build.json".as_ref())
+        })
+        .collect::<Vec<_>>();
+    mapping_paths.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+    Ok(mapping_paths)
+}
+
+fn read_registry_json_object(path: &Path) -> Result<Vec<u8>, RefusalPayload> {
+    let bytes = fs::read(path)
+        .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
+    let value = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|error| {
+        RefusalPayload::invalid_schema_single(
+            "column_registry",
+            format!(
+                "failed to parse registry definition '{}': {error}",
+                path.display()
+            ),
+        )
+    })?;
+    if !value.is_object() {
+        return Err(RefusalPayload::invalid_schema_single(
+            "column_registry",
+            format!(
+                "registry definition '{}' must be a JSON object",
+                path.display()
+            ),
+        ));
+    }
+    Ok(bytes)
+}
+
+fn registry_relative_file_name(path: &Path) -> Result<String, RefusalPayload> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            RefusalPayload::invalid_schema_single(
+                "column_registry",
+                format!("registry file '{}' is not valid UTF-8", path.display()),
+            )
+        })
+}
+
+fn frame_registry_file(relative_path: &str, bytes: &[u8], framed: &mut Vec<u8>) {
+    framed.extend_from_slice(relative_path.as_bytes());
+    framed.push(0);
+    framed.extend_from_slice(bytes.len().to_string().as_bytes());
+    framed.push(0);
+    framed.extend_from_slice(bytes);
+    framed.push(0xFF);
 }
 
 pub fn canonicalize_profile_column(

@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 
 /// Generate JSON Schema for the Profile YAML format
 pub fn generate_profile_schema() -> Value {
-    json!({
+    let mut schema = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://epistemic.so/schemas/profile.v1.json",
         "title": "Profile Schema",
@@ -104,7 +104,10 @@ pub fn generate_profile_schema() -> Value {
                             },
                             "data_starts_at": {"type": "integer", "minimum": 1},
                             "delimiter": {"type": "string", "minLength": 1, "maxLength": 1},
-                            "encoding": {"type": "string"},
+                            "encoding": {
+                                "type": "string",
+                                "description": "Source encoding label: utf-8, windows-1252, or latin1"
+                            },
                             "preamble_capture": {"type": "boolean"},
                             "unit_rows_capture": {"type": "boolean"},
                             "unit_rows": {
@@ -211,7 +214,47 @@ pub fn generate_profile_schema() -> Value {
                 }
             }
         ]
-    })
+    });
+
+    schema["properties"]["column_registry_hash"] = json!({
+        "type": "string",
+        "pattern": "^blake3:[a-f0-9]{64}$",
+        "description": "BLAKE3 hash of length-framed semantic registry bytes, required only for frozen profiles that set column_registry"
+    });
+
+    let all_of = schema["allOf"]
+        .as_array_mut()
+        .expect("profile schema allOf should be an array");
+    all_of.push(json!({
+        "if": {
+            "properties": {
+                "status": {"const": "draft"}
+            },
+            "required": ["column_registry_hash"]
+        },
+        "then": false
+    }));
+    all_of.push(json!({
+        "if": {
+            "properties": {
+                "status": {"const": "frozen"}
+            },
+            "required": ["column_registry"]
+        },
+        "then": {
+            "required": ["column_registry_hash"]
+        }
+    }));
+    all_of.push(json!({
+        "if": {
+            "required": ["column_registry_hash"]
+        },
+        "then": {
+            "required": ["column_registry"]
+        }
+    }));
+
+    schema
 }
 
 /// Generate JSON Schema for profile.discovery.v0 payloads.

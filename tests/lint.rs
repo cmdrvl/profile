@@ -317,3 +317,60 @@ fn lint_checks_every_composite_key_component_against_canonical_headers() {
     assert_eq!(issues[0]["kind"], "missing_key");
     assert_eq!(issues[0]["column"], "detailed_property_type");
 }
+
+#[test]
+fn lint_keeps_duplicate_registry_inputs_first_wins_to_match_consumers() {
+    let workspace = temp_workspace();
+    let registry_dir = workspace.path().join("registries").join("first_wins");
+    fs::create_dir_all(&registry_dir).expect("registry directory should be created");
+    fs::write(
+        registry_dir.join("registry.json"),
+        "{\"id\":\"first-wins\",\"version\":\"1\"}\n",
+    )
+    .expect("registry definition should be written");
+    fs::write(
+        registry_dir.join("aliases.json"),
+        "\
+[
+  {\"input\":\"Raw ID\",\"canonical_id\":\"first_id\",\"canonical_type\":\"column_name\",\"rule_id\":\"R1\"},
+  {\"input\":\"Raw ID\",\"canonical_id\":\"second_id\",\"canonical_type\":\"column_name\",\"rule_id\":\"R2\"}
+]
+",
+    )
+    .expect("aliases should be written");
+
+    let dataset_path = workspace.path().join("dataset.csv");
+    fs::write(&dataset_path, "Raw ID,Amount\nA,10\n").expect("dataset should be written");
+
+    let profile_path = workspace.path().join("profile.yaml");
+    fs::write(
+        &profile_path,
+        "\
+schema_version: 1
+status: draft
+format: csv
+column_registry: registries/first_wins
+key:
+  - first_id
+include_columns:
+  - first_id
+",
+    )
+    .expect("profile should be written");
+
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("lint")
+        .arg(&profile_path)
+        .arg("--against")
+        .arg(&dataset_path)
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+    assert!(
+        envelope["result"]["issues"]
+            .as_array()
+            .is_some_and(|issues| issues.is_empty())
+    );
+}

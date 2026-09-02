@@ -35,6 +35,7 @@ fn build_draft_template(format: &DatasetFormat) -> Result<Profile, RefusalPayloa
         status: ProfileStatus::Draft,
         format: resolved_format,
         column_registry: None,
+        column_registry_hash: None,
         fingerprint_ref: None,
         pre_parse: None,
         hashing: None,

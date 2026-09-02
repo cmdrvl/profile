@@ -89,7 +89,7 @@ Profiles have two states:
 
 **Draft** — a proposed profile, often agent-generated. Useful for iteration. Accepted by all report tools for exploratory analysis. Profile hash is `null` in output.
 
-**Frozen** — validated, canonicalized, hashed, and immutable. When you want to record the exact scoping used for an analysis, freeze the profile. The frozen profile's hash becomes part of the audit trail.
+**Frozen** — validated, canonicalized, hashed, and immutable. When you want to record the exact scoping used for an analysis, freeze the profile. The frozen profile's hash becomes part of the audit trail. Registry-backed frozen profiles also carry a `column_registry_hash` so the external registry bytes are bound into `profile_sha256` through the canonical YAML.
 
 The transition from draft to frozen is an explicit act (`profile freeze`). This is a boundary crossing — it converts a working configuration into an immutable reference.
 
@@ -158,7 +158,7 @@ profile lint <PROFILE> --against <DATASET> [--json]
   (checks schema validity, then checks referenced columns/key exist in the dataset after optional registry-backed header canonicalization)
 
 profile slice <DATASET> [--profile <ID_OR_PATH> | --profile-path <FILE>] [--out <CSV>] [--emit-manifest <JSON>] [--json]
-profile slice <DATASET> --mode <preamble_skip|multi_row_header|preamble_with_units> [--skip-rows <N>] [--header-at-row <N>] [--header-rows <LIST>] [--unit-rows <LIST>] [--data-starts-at <N>]
+profile slice <DATASET> --mode <preamble_skip|multi_row_header|preamble_with_units> [--skip-rows <N>] [--header-at-row <N>] [--header-rows <LIST>] [--unit-rows <LIST>] [--data-starts-at <N>] [--encoding <utf-8|windows-1252|latin1>]
   (applies pre_parse directives, writes clean CSV to --out or stdout in human mode, emits warnings when profile directives are overridden by flags, and can emit an explicit manifest with captured preamble/unit rows)
 
 profile emit-discovery <SLICED_CSV> --source-file <SOURCE_CSV> --skip-rows <N> [--source-kind <KIND>] [--json]
@@ -228,7 +228,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 |------------|-------------|----------|
 | `doctor` | Read-only diagnostic report | Envelope with doctor result; `--robot-triage` also emits machine-readable JSON without requiring `--json` |
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
-| `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, output hash, and lineage metadata; data rows omitted unless `--explicit` |
+| `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, source encoding, output hash, and lineage metadata; data rows omitted unless `--explicit` |
 | `emit-discovery` | Canonical discovery candidate object | Envelope with `result` containing a `profile.discovery.v0` payload |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
@@ -309,7 +309,7 @@ suggest-key (SUCCESS):
   ] }
 
 freeze (SUCCESS):
-  { "profile_id": "csv.loan_tape.core.v0", "profile_sha256": "sha256:a1b2...", "path": "profiles/csv.loan_tape.core.v0.yaml" }
+  { "profile_id": "csv.loan_tape.core.v0", "profile_sha256": "sha256:a1b2...", "column_registry_hash": "blake3:..." | omitted, "path": "profiles/csv.loan_tape.core.v0.yaml" }
 
 list (SUCCESS):
   { "profiles": [
@@ -385,6 +385,8 @@ profile_family: csv.loan_tape.core
 profile_sha256: "sha256:a1b2c3..."
 status: frozen
 format: csv
+column_registry: registries/annex-columns-v0
+column_registry_hash: "blake3:4d5e6f..."
 
 hashing:
   algorithm: sha256
@@ -406,7 +408,7 @@ include_columns:
   - maturity_date
 ```
 
-The frozen file on disk uses canonical field order and block style, but includes blank lines between sections for readability and inserts `profile_sha256` as the fifth field. It is therefore *not* byte-identical to the canonical form. To verify: strip the `profile_sha256` line, strip blank lines, confirm the result matches the canonical byte string, then SHA256 it.
+The frozen file on disk uses canonical field order and block style, but includes blank lines between sections for readability and inserts `profile_sha256` after `profile_family`. It is therefore *not* byte-identical to the canonical form. To verify: strip the `profile_sha256` line, strip blank lines, confirm the result matches the canonical byte string, then SHA256 it.
 
 ### Profile fields
 
@@ -420,8 +422,9 @@ The frozen file on disk uses canonical field order and block style, but includes
 | `status` | string | yes | `"draft"` or `"frozen"` |
 | `format` | string | yes | v0.1 accepts `csv`; other formats are deferred |
 | `column_registry` | string | no | Local canon registry path used to normalize raw dataset headers to canonical column IDs before profile scoping |
+| `column_registry_hash` | string | frozen with `column_registry` only | `"blake3:<hex>"` over the length-framed semantic registry bytes. Written by `freeze`, omitted when `column_registry` is absent, and checked on frozen-profile load by `validate`, `lint`, `stats`, and `slice` |
 | `fingerprint_ref` | string | no | Optional upstream fingerprint ID used as row-shape lineage |
-| `pre_parse` | object | no | Optional CSV slicing directives used by `profile slice` and `draft init --from-peek` |
+| `pre_parse` | object | no | Optional CSV slicing directives used by `profile slice` and `draft init --from-peek`; `pre_parse.slice.encoding` supports strict `utf-8`, `windows-1252`, and `latin1` source decoding |
 | `hashing` | object | no (default on freeze) | `{ algorithm: "sha256" }` |
 | `equivalence` | object | no (default on freeze) | Normalization rules |
 | `equivalence.order` | string | no (default on freeze) | `"order-invariant"` (default) or `"order-sensitive"` |
@@ -453,7 +456,7 @@ v0.1 validates family/version syntax and non-negative integer constraints. Globa
 ### What counts as breaking (requires new version)
 
 - Include/exclude column changes
-- Column registry path changes or alias-resolution contract changes
+- Column registry path changes, registry byte changes, or alias-resolution contract changes
 - Normalization changes (trim, float quantization, date format)
 - Key component additions, removals, or reordering
 - Equivalence changes (order-sensitive ↔ order-invariant)
@@ -469,7 +472,7 @@ v0.1 validates family/version syntax and non-negative integer constraints. Globa
 
 ## How Profiles Flow Through Report Tools
 
-**`profile`** creates, validates, freezes profiles. Computes `profile_sha256` for frozen profiles.
+**`profile`** creates, validates, freezes profiles. Computes `profile_sha256` for frozen profiles and `column_registry_hash` for frozen profiles that reference a column registry.
 
 **`rvl`** uses the profile to scope which columns to analyze. Records `profile_id` (and `profile_sha256` if frozen) in output.
 
@@ -557,6 +560,7 @@ E_IO:
 
 E_CSV_PARSE:
   { "path": "tape.csv", "error": "invalid UTF-8 at byte 4201" }
+  For `slice` source decoding failures, `error` includes the physical row and original byte offset.
 
 E_EMPTY:
   { "path": "tape.csv", "reason": "no header row | no data rows" }
@@ -684,14 +688,26 @@ Any change after freeze = new version, no exceptions.
 
 Canonicalization produces a deterministic YAML byte string for SHA256 hashing. The rules:
 
-1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `fingerprint_ref`, `pre_parse`, `hashing`, `equivalence`, `key`, `include_columns`
+1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `column_registry_hash`, `fingerprint_ref`, `pre_parse`, `hashing`, `equivalence`, `key`, `include_columns`. `column_registry_hash` is placed immediately after `column_registry` so registry-free profiles keep the same canonical bytes as before, while registry-backed profiles bind the locator to content bytes before downstream slicing or scoping directives.
 2. **Nested field order** within `hashing`: `algorithm`. Within `equivalence`: `order`, `float_decimals`, `trim_strings` (omitted fields stay omitted)
 3. **YAML style**: block style only (no flow sequences/mappings). Strings are unquoted unless they require quoting per YAML spec. Arrays use `- item` form (one item per line)
 4. **Array order**: preserve source order for `key` and `include_columns`; never sort either list
 5. **Trailing newline**: exactly one `\n` at end of file
 6. **No comments, no blank lines, no document markers (`---` / `...`)**
 
-`profile_sha256` is excluded from canonicalization (it is appended to the output file after the hash is computed). The frozen file on disk includes `profile_sha256` as the fourth field (after `profile_family`), but this field is not part of the canonical byte string.
+`profile_sha256` is excluded from canonicalization (it is appended to the output file after the hash is computed). The frozen file on disk includes `profile_sha256` after `profile_family`, but this field is not part of the canonical byte string. `column_registry_hash` is part of the canonical byte string when `column_registry` is set, so registry byte changes necessarily change `profile_sha256` for newly frozen registry-backed profiles.
+
+### Column registry hash specification
+
+`column_registry_hash` is present only on frozen profiles that set `column_registry`. The value is `blake3:<hex>` over a deterministic length-framed byte stream:
+
+1. Resolve `column_registry` relative to the profile file's parent directory; absolute references are used as-is. The locator path string does not enter this hash.
+2. Frame `registry.json` first. It must exist and parse as a JSON object.
+3. Frame every other `*.json` file directly in the registry directory, excluding `registry.json` and `_build.json`, sorted ascending by file name.
+4. For each file, append `relative_path_bytes`, `0x00`, the ASCII decimal byte length, `0x00`, the file bytes, and `0xFF`.
+5. Compute BLAKE3 over the concatenated frames and render lowercase hex with the `blake3:` prefix.
+
+Registry alias loading remains first-wins for duplicate `input` entries to match `rvl` and `shape`. Refusing two different physical CSV headers that resolve to one canonical ID is a materialization-time check, not a registry-load check.
 
 ### What `suggest-key` does
 
@@ -736,12 +752,12 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       a. Open profile file                 → E_IO if not found or permission denied
       b. Parse profile YAML                → E_INVALID_SCHEMA if not valid YAML
       c. Validate against schema           → E_MISSING_FIELD if required field absent; E_INVALID_SCHEMA on other failures
-      d. If status is "frozen": check frozen-only invariants (profile_id, profile_version, profile_family, profile_sha256 all present and well-formed). "Well-formed" for profile_sha256 means `sha256:` prefix + 64 lowercase hex chars — validate does NOT recompute the hash (that requires canonicalization and is a separate concern). → E_MISSING_FIELD / E_INVALID_SCHEMA
+      d. If status is "frozen": check frozen-only invariants (profile_id, profile_version, profile_family, profile_sha256 all present and well-formed). "Well-formed" for profile_sha256 means `sha256:` prefix + 64 lowercase hex chars. If `column_registry` is set, `column_registry_hash` is required, must be `blake3:` + 64 lowercase hex chars, and is recomputed from registry bytes relative to the profile file; mismatch is `E_INVALID_SCHEMA`, missing hash is `E_MISSING_FIELD`, missing registry files are `E_IO`.
       e. Report results
       f. Exit 0 (valid) or 2 (invalid)
 
     lint:
-      a. Validate profile (same as validate, including E_IO for file access)
+      a. Validate profile (same as validate, including frozen registry hash drift checks and E_IO for file access)
       b. Open dataset file                 → E_IO if not found or permission denied
       c. Parse dataset header              → E_CSV_PARSE if invalid, E_EMPTY if no header
       d. Check all include_columns exist   → report missing columns (domain finding, not refusal)
@@ -749,9 +765,9 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       f. Exit 0 (all clear) or 1 (issues found) or 2 (refusal from steps a-c)
 
     slice:
-      a. Resolve profile/path and directives → E_IO / E_INVALID_SCHEMA on bad profile access/shape
+      a. Resolve profile/path and directives, including frozen registry hash drift checks when a profile is supplied → E_IO / E_INVALID_SCHEMA on bad profile access/shape
       b. Apply CLI directive overrides       → warning when profile directives are overridden by flags
-      c. Stream and parse physical rows      → E_IO / E_CSV_PARSE on file/row parse failure
+      c. Read source bytes, decode strictly according to `pre_parse.slice.encoding`/`--encoding` (default `utf-8`; supports `windows-1252` and `latin1`), and parse CSV records → E_IO / E_CSV_PARSE on file/decode/row parse failure
       d. Build sliced output                 → E_EMPTY if no data rows after directives applied
       e. If expected_shape.modal_column_count is set and differs from output width → warning
       f. Emit clean CSV + optional manifest + deterministic output_hash
@@ -769,7 +785,7 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
     stats:
       a. Open dataset file                 → E_IO if not found or permission denied
       b. Parse dataset                     → E_CSV_PARSE if invalid, E_EMPTY if no data rows
-      c. If --profile: open, parse, and schema-validate profile YAML (same checks as validate steps b-d) → E_IO / E_INVALID_SCHEMA / E_MISSING_FIELD
+      c. If --profile: open, parse, and schema-validate profile YAML (same checks as validate steps b-d, including frozen registry hash drift checks) → E_IO / E_INVALID_SCHEMA / E_MISSING_FIELD
       d. If --profile: validate profile columns exist in dataset → E_COLUMN_NOT_FOUND if missing
       e. Compute column counts, null rates, uniqueness scores (scoped to profile columns if provided)
       f. Emit report (human or --json)
@@ -789,11 +805,12 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       d. Check not already frozen          → E_ALREADY_FROZEN
       e. Validate --family format and version integer constraints (v0.1; global monotonicity deferred) → E_BAD_VERSION if invalid
       f. Fill defaults, set identity fields (status, profile_id, version, family)
-      g. Canonicalize (stable field order, all fields including identity EXCEPT profile_sha256)
-      h. Compute profile_sha256 (SHA256 of canonicalized content from step g)
-      i. Write frozen profile to --out     → E_IO if write fails; refuses if --out already exists (frozen profiles are immutable artifacts — use a new path or delete explicitly)
-      j. Print output path to stdout
-      k. Exit 0
+      g. If column_registry is set, resolve it relative to the output profile path and write column_registry_hash using the registry hash specification above; omit column_registry_hash otherwise
+      h. Canonicalize (stable field order, all fields including identity and column_registry_hash EXCEPT profile_sha256)
+      i. Compute profile_sha256 (SHA256 of canonicalized content from step h)
+      j. Write frozen profile to --out     → E_IO if write fails; refuses if --out already exists (frozen profiles are immutable artifacts — use a new path or delete explicitly)
+      k. Print output path to stdout
+      l. Exit 0
 
     list:
       a. Search resolution paths (`~/.cmdrvl/config/profile/profiles/` in v0.1)
@@ -809,7 +826,7 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
 
     diff:
       a. Resolve both profiles (paths or IDs) → E_IO if either not found
-      b. Compute structural diff over semantic fields only: format, column_registry, hashing, equivalence, key, include_columns.
+      b. Compute structural diff over semantic fields only: format, column_registry, column_registry_hash, fingerprint_ref, pre_parse, hashing, equivalence, key, include_columns.
          Identity fields (profile_id, profile_version, profile_family, profile_sha256, status, schema_version) are excluded — they are metadata, not scoping semantics. This means diffing a draft against a frozen profile reports only meaningful differences.
       c. Emit diff report (human or --json). Each difference: { field, a_value, b_value }.
       d. Exit 0 (identical) or 1 (differences found)
@@ -1083,7 +1100,7 @@ fn main() -> std::process::ExitCode {
 | `serde_yaml` | YAML parsing and emission for profile files |
 | `csv` | CSV dataset parsing (for init/lint/stats/suggest-key) |
 | `sha2` | SHA256 for `profile_sha256` computation |
-| `blake3` | Witness record hashing |
+| `blake3` | Witness record hashing and registry content hashing |
 | `chrono` | ISO 8601 timestamp formatting |
 
 ---

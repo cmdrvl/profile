@@ -60,6 +60,7 @@ pub fn run(args: &DraftInitArgs, _no_witness: bool) -> Result<Value, RefusalPayl
             .column_registry
             .as_ref()
             .map(|path| path.display().to_string()),
+        column_registry_hash: None,
         fingerprint_ref: None,
         pre_parse,
         hashing: None,

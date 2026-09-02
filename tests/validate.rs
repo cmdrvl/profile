@@ -205,3 +205,78 @@ include_columns:
     let assert = profile_cmd().arg("validate").arg(&profile_path).assert();
     common::assert_success_exit!(assert);
 }
+
+#[test]
+fn validate_accepts_supported_slice_encoding_labels() {
+    let workspace = common::temp_workspace();
+
+    for encoding in ["utf-8", "windows-1252", "latin1"] {
+        let profile_path = workspace
+            .path()
+            .join(format!("with-{}.yaml", encoding.replace('-', "_")));
+        fs::write(
+            &profile_path,
+            format!(
+                "\
+schema_version: 1
+status: draft
+format: csv
+pre_parse:
+  slice:
+    mode: preamble_skip
+    header_at_row: 1
+    data_starts_at: 2
+    encoding: {encoding}
+include_columns:
+  - id
+"
+            ),
+        )
+        .expect("profile fixture write should succeed");
+
+        let assert = profile_cmd()
+            .arg("--json")
+            .arg("--no-witness")
+            .arg("validate")
+            .arg(&profile_path)
+            .assert();
+        common::assert_success_exit!(assert);
+    }
+}
+
+#[test]
+fn validate_refuses_unsupported_slice_encoding_label() {
+    let workspace = common::temp_workspace();
+    let profile_path = workspace.path().join("unsupported-encoding.yaml");
+    fs::write(
+        &profile_path,
+        "\
+schema_version: 1
+status: draft
+format: csv
+pre_parse:
+  slice:
+    mode: preamble_skip
+    header_at_row: 1
+    data_starts_at: 2
+    encoding: utf-16
+include_columns:
+  - id
+",
+    )
+    .expect("profile fixture write should succeed");
+
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("validate")
+        .arg(&profile_path)
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_refusal_exit!(assert);
+    assert_eq!(envelope["result"]["code"], "E_INVALID_SCHEMA");
+    assert_eq!(
+        envelope["result"]["detail"]["errors"][0]["field"],
+        "pre_parse.slice.encoding"
+    );
+}

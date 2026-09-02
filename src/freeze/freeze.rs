@@ -6,7 +6,7 @@ use crate::output::json::CommandOutput;
 use crate::refusal::RefusalPayload;
 use crate::schema::{
     ProfileStatus, ValidationMode, canonical_yaml, compute_profile_sha256, is_valid_profile_family,
-    parse_profile_yaml, validate_profile,
+    parse_profile_yaml, registry_content_hash, resolve_registry_path, validate_profile,
 };
 use crate::witness::append::append_for_command;
 
@@ -51,6 +51,13 @@ pub fn run(args: &FreezeArgs, no_witness: bool) -> Result<CommandOutput, Refusal
     profile.profile_family = Some(args.family.clone());
     profile.status = ProfileStatus::Frozen;
 
+    if let Some(registry_ref) = profile.column_registry.as_deref() {
+        let registry_path = resolve_registry_path(&args.out, registry_ref);
+        profile.column_registry_hash = Some(registry_content_hash(&registry_path)?);
+    } else {
+        profile.column_registry_hash = None;
+    }
+
     // Canonicalize and compute hash (needed for freeze validation)
     let canonical = canonical_yaml(&profile)?;
     let hash = compute_profile_sha256(&canonical);
@@ -71,11 +78,14 @@ pub fn run(args: &FreezeArgs, no_witness: bool) -> Result<CommandOutput, Refusal
     fs::write(&args.out, output_yaml)
         .map_err(|error| RefusalPayload::io(args.out.display().to_string(), error.to_string()))?;
 
-    let result = json!({
+    let mut result = json!({
         "path": args.out.display().to_string(),
         "profile_id": profile.profile_id,
         "profile_sha256": profile.profile_sha256
     });
+    if let Some(column_registry_hash) = profile.column_registry_hash {
+        result["column_registry_hash"] = json!(column_registry_hash);
+    }
     let witness_id = append_for_command(
         "freeze",
         &result,

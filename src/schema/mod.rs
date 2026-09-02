@@ -11,9 +11,10 @@ pub use profile::{
 };
 pub use registry::{
     HeaderIndex, build_header_index, canonicalize_header_sequence, canonicalize_profile_column,
-    load_column_registry_aliases, resolve_registry_path,
+    load_column_registry_aliases, registry_content_hash, resolve_registry_path,
+    validate_frozen_registry_hash,
 };
 pub use validate::{
-    ValidationMode, is_valid_profile_family, is_valid_profile_sha256, parse_profile_yaml,
-    validate_profile,
+    ValidationMode, is_supported_slice_encoding, is_valid_column_registry_hash,
+    is_valid_profile_family, is_valid_profile_sha256, parse_profile_yaml, validate_profile,
 };

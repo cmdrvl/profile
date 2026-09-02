@@ -21,6 +21,8 @@ struct CanonicalProfile<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     column_registry: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    column_registry_hash: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     fingerprint_ref: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pre_parse: Option<&'a PreParse>,
@@ -83,6 +85,7 @@ impl<'a> From<&'a Profile> for CanonicalProfile<'a> {
             status: profile.status,
             format: profile.format,
             column_registry: profile.column_registry.as_deref(),
+            column_registry_hash: profile.column_registry_hash.as_deref(),
             fingerprint_ref: profile.fingerprint_ref.as_deref(),
             pre_parse: profile.pre_parse.as_ref(),
             hashing: profile.hashing.as_ref().map(CanonicalHashing::from),

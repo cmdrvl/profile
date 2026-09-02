@@ -104,6 +104,9 @@ pub struct Profile {
     pub column_registry: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_registry_hash: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fingerprint_ref: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -5,7 +5,9 @@ use serde_json::json;
 use crate::cli::args::ValidateArgs;
 use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
-use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
+use crate::schema::{
+    ValidationMode, parse_profile_yaml, validate_frozen_registry_hash, validate_profile,
+};
 use crate::witness::append::append_for_command;
 
 pub fn run(args: &ValidateArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
@@ -14,6 +16,7 @@ pub fn run(args: &ValidateArgs, no_witness: bool) -> Result<CommandOutput, Refus
         .map_err(|error| RefusalPayload::io(path, error.to_string()))?;
     let profile = parse_profile_yaml(&content)?;
     validate_profile(&profile, ValidationMode::Validate)?;
+    validate_frozen_registry_hash(&args.file, &profile)?;
 
     let result = json!({
         "valid": true

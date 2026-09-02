@@ -189,6 +189,13 @@ pub fn capabilities_report() -> Value {
                 "status": "available"
             }
         },
+        "registry_content_identity": {
+            "field": "column_registry_hash",
+            "algorithm": "blake3",
+            "framing": "registry.json first, then sorted direct *.json mapping files excluding registry.json and _build.json; each frame is relative_path NUL byte_len NUL file_bytes 0xFF",
+            "required_for": "frozen profiles that set column_registry",
+            "drift_checked_by": ["validate", "lint", "stats", "slice"]
+        },
         "commands": [
             {
                 "name": "profile --robot-triage",

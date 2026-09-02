@@ -1,5 +1,4 @@
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -10,7 +9,7 @@ use crate::refusal::RefusalPayload;
 use crate::resolve::resolver::resolve_profile;
 use crate::schema::{
     HeaderMerge, HeaderMergeStrategy, PreParse, Profile, SliceDirectives, SliceMode,
-    ValidationMode, parse_profile_yaml, validate_profile,
+    ValidationMode, parse_profile_yaml, validate_frozen_registry_hash, validate_profile,
 };
 use crate::witness::append::append_for_command;
 
@@ -19,7 +18,8 @@ pub fn headers_from_pre_parse(
     pre_parse: &PreParse,
 ) -> Result<Vec<String>, RefusalPayload> {
     let delimiter = resolve_delimiter(&pre_parse.slice)?;
-    let rows = read_physical_rows(path, delimiter)?;
+    let source_encoding = resolve_source_encoding(&pre_parse.slice)?;
+    let rows = read_physical_rows(path, delimiter, source_encoding)?;
     let plan = build_plan(&pre_parse.slice)?;
     let slice = build_slice(&rows, &plan, &pre_parse.slice)?;
     Ok(slice.headers)
@@ -40,7 +40,8 @@ pub fn run(
     validate_directives(&directives)?;
 
     let delimiter = resolve_delimiter(&directives)?;
-    let rows = read_physical_rows(&args.file, delimiter)?;
+    let source_encoding = resolve_source_encoding(&directives)?;
+    let rows = read_physical_rows(&args.file, delimiter, source_encoding)?;
     let plan = build_plan(&directives)?;
     let slice = build_slice(&rows, &plan, &directives)?;
     if let Some(warning) = modal_column_count_warning(profile, slice.headers.len()) {
@@ -55,15 +56,16 @@ pub fn run(
     }
 
     if let Some(manifest_path) = args.emit_manifest.as_deref() {
-        let manifest = build_manifest(
+        let manifest = build_manifest(SliceManifestInputs {
             args,
             profile,
-            &directives,
-            &plan,
-            &slice,
-            &rows,
-            &output_hash,
-        );
+            directives: &directives,
+            plan: &plan,
+            slice: &slice,
+            rows: &rows,
+            output_hash: &output_hash,
+            source_encoding,
+        });
         let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|error| {
             RefusalPayload::invalid_schema_single(
                 "manifest",
@@ -81,6 +83,7 @@ pub fn run(
         "manifest_path": args.emit_manifest.as_ref().map(|path| path.display().to_string()),
         "profile_id": profile.and_then(|profile| profile.profile_id.clone()),
         "fingerprint_ref": profile.and_then(|profile| profile.fingerprint_ref.clone()),
+        "source_encoding": source_encoding.label(),
         "mode": directives.mode.as_str(),
         "directives": directive_summary(&directives),
         "rows": {
@@ -142,6 +145,7 @@ fn resolve_slice_profile(args: &SliceArgs) -> Result<Option<SliceProfile>, Refus
         )),
         (Some(profile_ref), None) => {
             let resolved = resolve_profile(profile_ref)?;
+            validate_frozen_registry_hash(&resolved.path, &resolved.profile)?;
             Ok(Some(SliceProfile {
                 path: resolved.path,
                 profile: resolved.profile,
@@ -153,6 +157,7 @@ fn resolve_slice_profile(args: &SliceArgs) -> Result<Option<SliceProfile>, Refus
             })?;
             let profile = parse_profile_yaml(&content)?;
             validate_profile(&profile, ValidationMode::Validate)?;
+            validate_frozen_registry_hash(path, &profile)?;
             Ok(Some(SliceProfile {
                 path: path.to_path_buf(),
                 profile,
@@ -307,6 +312,7 @@ fn validate_directives(directives: &SliceDirectives) -> Result<(), RefusalPayloa
         status: crate::schema::ProfileStatus::Draft,
         format: crate::schema::ProfileFormat::Csv,
         column_registry: None,
+        column_registry_hash: None,
         fingerprint_ref: None,
         pre_parse: Some(PreParse {
             expected_shape: None,
@@ -332,42 +338,69 @@ fn resolve_delimiter(directives: &SliceDirectives) -> Result<u8, RefusalPayload>
     }
 }
 
-fn read_physical_rows(path: &Path, delimiter: u8) -> Result<Vec<Vec<String>>, RefusalPayload> {
-    let file = File::open(path)
-        .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
-    let mut buffered = BufReader::new(file);
-    let mut rows = Vec::new();
-    let mut line = String::new();
-    loop {
-        line.clear();
-        let read = buffered
-            .read_line(&mut line)
-            .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
-        if read == 0 {
-            break;
+#[derive(Debug, Clone, Copy)]
+enum SourceEncoding {
+    Utf8,
+    Windows1252,
+    Latin1,
+}
+
+impl SourceEncoding {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Utf8 => "utf-8",
+            Self::Windows1252 => "windows-1252",
+            Self::Latin1 => "latin1",
         }
-        while line.ends_with('\n') || line.ends_with('\r') {
-            line.pop();
-        }
-        if line.trim().is_empty() {
-            rows.push(Vec::new());
-            continue;
-        }
-        let mut reader = csv::ReaderBuilder::new()
-            .has_headers(false)
-            .flexible(true)
-            .delimiter(delimiter)
-            .from_reader(line.as_bytes());
-        let record = reader
-            .records()
-            .next()
-            .transpose()
-            .map_err(|error| {
-                RefusalPayload::csv_parse(path.display().to_string(), error.to_string())
-            })?
-            .ok_or_else(|| RefusalPayload::empty(path.display().to_string()))?;
-        rows.push(record.iter().map(ToOwned::to_owned).collect());
     }
+}
+
+fn resolve_source_encoding(directives: &SliceDirectives) -> Result<SourceEncoding, RefusalPayload> {
+    match directives.encoding.as_deref() {
+        None => Ok(SourceEncoding::Utf8),
+        Some(label) if label.eq_ignore_ascii_case("utf-8") => Ok(SourceEncoding::Utf8),
+        Some(label) if label.eq_ignore_ascii_case("utf8") => Ok(SourceEncoding::Utf8),
+        Some(label) if label.eq_ignore_ascii_case("windows-1252") => {
+            Ok(SourceEncoding::Windows1252)
+        }
+        Some(label) if label.eq_ignore_ascii_case("cp1252") => Ok(SourceEncoding::Windows1252),
+        Some(label) if label.eq_ignore_ascii_case("latin1") => Ok(SourceEncoding::Latin1),
+        Some(label) if label.eq_ignore_ascii_case("latin-1") => Ok(SourceEncoding::Latin1),
+        Some(label) if label.eq_ignore_ascii_case("iso-8859-1") => Ok(SourceEncoding::Latin1),
+        Some(label) => Err(RefusalPayload::invalid_schema_single(
+            "pre_parse.slice.encoding",
+            format!("unsupported encoding '{label}'"),
+        )),
+    }
+}
+
+fn read_physical_rows(
+    path: &Path,
+    delimiter: u8,
+    source_encoding: SourceEncoding,
+) -> Result<Vec<Vec<String>>, RefusalPayload> {
+    let bytes = fs::read(path)
+        .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
+    let decoded = decode_source_bytes(path, &bytes, source_encoding)?;
+    let bytes = preserve_blank_lines_as_csv_records(decoded.as_bytes());
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .delimiter(delimiter)
+        .from_reader(bytes.as_slice());
+    let mut rows = Vec::new();
+
+    for record in reader.records() {
+        let record = record.map_err(|error| {
+            RefusalPayload::csv_parse(path.display().to_string(), error.to_string())
+        })?;
+        if record.len() == 1 && record.get(0) == Some(BLANK_ROW_SENTINEL) {
+            rows.push(Vec::new());
+        } else {
+            rows.push(record.iter().map(ToOwned::to_owned).collect());
+        }
+    }
+
     if rows.is_empty() {
         return Err(RefusalPayload::empty_with_reason(
             path.display().to_string(),
@@ -375,6 +408,159 @@ fn read_physical_rows(path: &Path, delimiter: u8) -> Result<Vec<Vec<String>>, Re
         ));
     }
     Ok(rows)
+}
+
+fn decode_source_bytes(
+    path: &Path,
+    bytes: &[u8],
+    source_encoding: SourceEncoding,
+) -> Result<String, RefusalPayload> {
+    match source_encoding {
+        SourceEncoding::Utf8 => {
+            std::str::from_utf8(bytes)
+                .map(ToOwned::to_owned)
+                .map_err(|error| {
+                    invalid_source_encoding(path, bytes, source_encoding, error.valid_up_to())
+                })
+        }
+        SourceEncoding::Windows1252 => {
+            decode_single_byte_encoding(path, bytes, source_encoding, encoding_rs::WINDOWS_1252)
+        }
+        SourceEncoding::Latin1 => decode_single_byte_encoding(
+            path,
+            bytes,
+            source_encoding,
+            encoding_rs::Encoding::for_label(b"latin1").expect("latin1 encoding label is built in"),
+        ),
+    }
+}
+
+fn decode_single_byte_encoding(
+    path: &Path,
+    bytes: &[u8],
+    source_encoding: SourceEncoding,
+    encoding: &'static encoding_rs::Encoding,
+) -> Result<String, RefusalPayload> {
+    let (decoded, had_errors) = encoding.decode_without_bom_handling(bytes);
+    if had_errors {
+        return Err(invalid_source_encoding(path, bytes, source_encoding, 0));
+    }
+    Ok(decoded.into_owned())
+}
+
+fn invalid_source_encoding(
+    path: &Path,
+    bytes: &[u8],
+    source_encoding: SourceEncoding,
+    byte_offset: usize,
+) -> RefusalPayload {
+    let physical_row = physical_row_at_byte_offset(bytes, byte_offset);
+    RefusalPayload::csv_parse(
+        path.display().to_string(),
+        format!(
+            "invalid {} source bytes at physical row {physical_row}, byte offset {byte_offset}",
+            source_encoding.label()
+        ),
+    )
+}
+
+fn physical_row_at_byte_offset(bytes: &[u8], byte_offset: usize) -> usize {
+    let mut row = 1usize;
+    let mut index = 0usize;
+    let limit = byte_offset.min(bytes.len());
+
+    while index < limit {
+        match bytes[index] {
+            b'\n' => {
+                row += 1;
+                index += 1;
+            }
+            b'\r' => {
+                row += 1;
+                if bytes.get(index + 1) == Some(&b'\n') {
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+            }
+            _ => {
+                index += 1;
+            }
+        }
+    }
+
+    row
+}
+
+const BLANK_ROW_SENTINEL: &str = "\u{1e}profile_blank_row\u{1e}";
+
+fn preserve_blank_lines_as_csv_records(bytes: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut in_quotes = false;
+    let mut line_start = 0usize;
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' => {
+                if in_quotes && bytes.get(index + 1) == Some(&b'"') {
+                    index += 2;
+                } else {
+                    in_quotes = !in_quotes;
+                    index += 1;
+                }
+            }
+            b'\n' if !in_quotes => {
+                let line_end = if index > line_start && bytes[index - 1] == b'\r' {
+                    index - 1
+                } else {
+                    index
+                };
+                append_physical_line(bytes, line_start, line_end, index + 1, &mut output);
+                index += 1;
+                line_start = index;
+            }
+            b'\r' if !in_quotes => {
+                if bytes.get(index + 1) == Some(&b'\n') {
+                    append_physical_line(bytes, line_start, index, index + 2, &mut output);
+                    index += 2;
+                    line_start = index;
+                    continue;
+                }
+                append_physical_line(bytes, line_start, index, index + 1, &mut output);
+                index += 1;
+                line_start = index;
+            }
+            _ => {
+                index += 1;
+            }
+        }
+    }
+
+    if line_start < bytes.len() {
+        append_physical_line(bytes, line_start, bytes.len(), bytes.len(), &mut output);
+    }
+
+    output
+}
+
+fn append_physical_line(
+    bytes: &[u8],
+    line_start: usize,
+    line_end: usize,
+    terminator_end: usize,
+    output: &mut Vec<u8>,
+) {
+    if is_blank_physical_line(&bytes[line_start..line_end]) {
+        output.extend_from_slice(BLANK_ROW_SENTINEL.as_bytes());
+        output.extend_from_slice(&bytes[line_end..terminator_end]);
+    } else {
+        output.extend_from_slice(&bytes[line_start..terminator_end]);
+    }
+}
+
+fn is_blank_physical_line(bytes: &[u8]) -> bool {
+    bytes.iter().all(u8::is_ascii_whitespace)
 }
 
 fn modal_column_count_warning(profile: Option<&Profile>, output_columns: usize) -> Option<String> {
@@ -571,15 +757,29 @@ fn render_csv(headers: &[String], rows: &[Vec<String>]) -> Result<Vec<u8>, Refus
     })
 }
 
-fn build_manifest(
-    args: &SliceArgs,
-    profile: Option<&Profile>,
-    directives: &SliceDirectives,
-    plan: &SlicePlan,
-    slice: &SliceOutput,
-    rows: &[Vec<String>],
-    output_hash: &str,
-) -> Value {
+struct SliceManifestInputs<'a> {
+    args: &'a SliceArgs,
+    profile: Option<&'a Profile>,
+    directives: &'a SliceDirectives,
+    plan: &'a SlicePlan,
+    slice: &'a SliceOutput,
+    rows: &'a [Vec<String>],
+    output_hash: &'a str,
+    source_encoding: SourceEncoding,
+}
+
+fn build_manifest(inputs: SliceManifestInputs<'_>) -> Value {
+    let SliceManifestInputs {
+        args,
+        profile,
+        directives,
+        plan,
+        slice,
+        rows,
+        output_hash,
+        source_encoding,
+    } = inputs;
+
     let preamble_rows = if directives.preamble_capture.unwrap_or(true) {
         rows.iter()
             .take(
@@ -608,6 +808,7 @@ fn build_manifest(
         "input_path": args.file.display().to_string(),
         "profile_id": profile.and_then(|profile| profile.profile_id.clone()),
         "fingerprint_ref": profile.and_then(|profile| profile.fingerprint_ref.clone()),
+        "source_encoding": source_encoding.label(),
         "directives": directive_summary(directives),
         "header_rows": &plan.header_rows,
         "unit_rows": &plan.unit_rows,

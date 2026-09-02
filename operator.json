@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "profile",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Creates, validates, and freezes column-scoping profiles for report tools",
   "repository": "https://github.com/cmdrvl/profile",
   "license": "MIT",
@@ -70,6 +70,13 @@
     "streaming": false,
     "pre_parse": true,
     "slice": true,
+    "column_registry_hash": {
+      "field": "column_registry_hash",
+      "algorithm": "blake3",
+      "framing": "registry.json first, then sorted direct *.json mapping files excluding registry.json and _build.json; each frame is relative_path NUL byte_len NUL file_bytes 0xFF",
+      "required_for": "frozen profiles that set column_registry",
+      "drift_checked_by": ["validate", "lint", "stats", "slice"]
+    },
     "robot_triage": true,
     "agent_surfaces": {
       "robot_triage": "profile --robot-triage",

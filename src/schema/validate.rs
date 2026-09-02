@@ -33,6 +33,22 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
         ));
     }
 
+    if profile.column_registry.is_none() && profile.column_registry_hash.is_some() {
+        return Err(invalid_schema(
+            "column_registry_hash",
+            "must only be set when column_registry is set",
+        ));
+    }
+
+    if let Some(column_registry_hash) = profile.column_registry_hash.as_deref()
+        && !is_valid_column_registry_hash(column_registry_hash)
+    {
+        return Err(invalid_schema(
+            "column_registry_hash",
+            "column_registry_hash must match blake3:<64 lowercase hex chars>",
+        ));
+    }
+
     if profile
         .fingerprint_ref
         .as_deref()
@@ -130,12 +146,20 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
             ));
         }
 
+        if profile.column_registry.is_some() {
+            profile
+                .column_registry_hash
+                .as_deref()
+                .ok_or_else(|| missing_field("column_registry_hash"))?;
+        }
+
         // Status is already validated to be frozen if we get here
     } else if matches!(profile.status, ProfileStatus::Draft)
         && (profile.profile_id.is_some()
             || profile.profile_version.is_some()
             || profile.profile_family.is_some()
-            || profile.profile_sha256.is_some())
+            || profile.profile_sha256.is_some()
+            || profile.column_registry_hash.is_some())
     {
         return Err(invalid_schema(
             "status",
@@ -159,12 +183,11 @@ fn validate_pre_parse(profile: &Profile) -> Result<(), RefusalPayload> {
     let slice = &pre_parse.slice;
 
     if let Some(encoding) = slice.encoding.as_deref()
-        && !encoding.eq_ignore_ascii_case("utf-8")
-        && !encoding.eq_ignore_ascii_case("utf8")
+        && !is_supported_slice_encoding(encoding)
     {
         return Err(invalid_schema(
             "pre_parse.slice.encoding",
-            "only utf-8 is currently supported",
+            "must be utf-8, windows-1252, or latin1",
         ));
     }
 
@@ -337,6 +360,27 @@ pub fn is_valid_profile_sha256(value: &str) -> bool {
         && hex
             .chars()
             .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch))
+}
+
+pub fn is_valid_column_registry_hash(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return false;
+    };
+
+    hex.len() == 64
+        && hex
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch))
+}
+
+pub fn is_supported_slice_encoding(value: &str) -> bool {
+    value.eq_ignore_ascii_case("utf-8")
+        || value.eq_ignore_ascii_case("utf8")
+        || value.eq_ignore_ascii_case("windows-1252")
+        || value.eq_ignore_ascii_case("cp1252")
+        || value.eq_ignore_ascii_case("latin1")
+        || value.eq_ignore_ascii_case("latin-1")
+        || value.eq_ignore_ascii_case("iso-8859-1")
 }
 
 fn is_first_family_segment(segment: &str) -> bool {

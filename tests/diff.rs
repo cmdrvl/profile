@@ -92,6 +92,7 @@ profile_sha256: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 status: frozen
 format: csv
 column_registry: registries/annex_columns_v0
+column_registry_hash: blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 key:
   - balance
 include_columns:
@@ -143,6 +144,7 @@ include_columns:
         fields,
         vec![
             "column_registry",
+            "column_registry_hash",
             "hashing",
             "equivalence",
             "key",
