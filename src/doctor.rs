@@ -196,6 +196,12 @@ pub fn capabilities_report() -> Value {
             "required_for": "frozen profiles that set column_registry",
             "drift_checked_by": ["validate", "lint", "stats", "slice"]
         },
+        "canonical_csv_headers": {
+            "canonicalizer_version": "profile.canonical_csv_headers.v1",
+            "command": "profile slice",
+            "enabled_when": "a resolved profile sets column_registry",
+            "manifest_fields": ["input_hash", "profile_sha256", "column_registry_hash", "canonicalizer_version", "mapping", "unmapped"]
+        },
         "commands": [
             {
                 "name": "profile --robot-triage",

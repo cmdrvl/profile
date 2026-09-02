@@ -4,6 +4,7 @@ use common::{fixture_path, parse_stdout_json, profile_cmd, temp_workspace};
 use serde_json::{Value, json};
 use std::fs;
 use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 #[test]
@@ -455,6 +456,209 @@ fn slice_refuses_invalid_default_utf8_with_physical_row_and_byte_offset() {
 }
 
 #[test]
+fn slice_registry_only_profile_materializes_canonical_headers_and_manifest_lineage() {
+    let workspace = temp_workspace();
+    copy_annex_registry(workspace.path());
+    let draft = write_registry_draft(workspace.path(), None);
+    let frozen = freeze_registry_draft(workspace.path(), &draft, "registry_only.frozen.yaml");
+    let input = workspace.path().join("registry_only.csv");
+    let out = workspace.path().join("registry_only.clean.csv");
+    let manifest = workspace.path().join("registry_only.manifest.json");
+    let input_bytes =
+        b"Loan Number,Current Balance,Note Rate,Servicer Comment\n1001,12.50,0.055,ok\n";
+    fs::write(&input, input_bytes).expect("write registry-only source CSV");
+
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(&input)
+        .arg("--profile-path")
+        .arg(&frozen)
+        .arg("--out")
+        .arg(&out)
+        .arg("--emit-manifest")
+        .arg(&manifest)
+        .arg("--json")
+        .arg("--no-witness")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    assert_eq!(
+        fs::read_to_string(&out).expect("canonicalized output CSV"),
+        "loan_id_number,current_balance,note_rate,Servicer Comment\n1001,12.50,0.055,ok\n"
+    );
+    assert_eq!(envelope["result"]["rows"]["header_rows"], json!([1]));
+    assert_eq!(envelope["result"]["rows"]["data_starts_at"], 2);
+    assert_eq!(
+        envelope["result"]["columns"],
+        json!([
+            "loan_id_number",
+            "current_balance",
+            "note_rate",
+            "Servicer Comment"
+        ])
+    );
+    assert_eq!(envelope["result"]["canonical_headers"]["applied"], true);
+    assert_eq!(
+        envelope["result"]["canonical_headers"]["canonicalizer_version"],
+        "profile.canonical_csv_headers.v1"
+    );
+    assert_eq!(envelope["result"]["canonical_headers"]["mapped_count"], 3);
+    assert_eq!(envelope["result"]["canonical_headers"]["unmapped_count"], 1);
+
+    let frozen_yaml: Value =
+        serde_yaml::from_str(&fs::read_to_string(&frozen).expect("frozen profile"))
+            .expect("frozen profile yaml");
+    let manifest_json: Value =
+        serde_json::from_str(&fs::read_to_string(&manifest).expect("manifest"))
+            .expect("manifest json");
+    assert_eq!(
+        manifest_json["input_hash"],
+        format!("blake3:{}", blake3::hash(input_bytes).to_hex())
+    );
+    assert_eq!(
+        manifest_json["profile_sha256"],
+        frozen_yaml["profile_sha256"]
+    );
+    assert_eq!(
+        manifest_json["column_registry_hash"],
+        frozen_yaml["column_registry_hash"]
+    );
+    assert_eq!(
+        manifest_json["canonicalizer_version"],
+        "profile.canonical_csv_headers.v1"
+    );
+    assert_eq!(
+        manifest_json["output_hash"],
+        envelope["result"]["output_hash"]
+    );
+    assert_eq!(
+        manifest_json["mapping"],
+        json!([
+            {
+                "position": 1,
+                "raw": "Loan Number",
+                "canonical": "loan_id_number",
+                "mapped": true
+            },
+            {
+                "position": 2,
+                "raw": "Current Balance",
+                "canonical": "current_balance",
+                "mapped": true
+            },
+            {
+                "position": 3,
+                "raw": "Note Rate",
+                "canonical": "note_rate",
+                "mapped": true
+            },
+            {
+                "position": 4,
+                "raw": "Servicer Comment",
+                "canonical": "Servicer Comment",
+                "mapped": false
+            }
+        ])
+    );
+    assert_eq!(manifest_json["unmapped"], json!(["Servicer Comment"]));
+}
+
+#[test]
+fn slice_applies_registry_headers_after_pre_parse_cleanup() {
+    let workspace = temp_workspace();
+    copy_annex_registry(workspace.path());
+    let draft = write_registry_draft(
+        workspace.path(),
+        Some(
+            r#"pre_parse:
+  slice:
+    mode: preamble_skip
+    skip_rows: 2
+    header_at_row: 3
+    data_starts_at: 4
+"#,
+        ),
+    );
+    let frozen = freeze_registry_draft(workspace.path(), &draft, "preparse_registry.frozen.yaml");
+    let input = workspace.path().join("preparse_registry.csv");
+    let out = workspace.path().join("preparse_registry.clean.csv");
+    fs::write(
+        &input,
+        "Servicer Export\nAs of 2026-09-02\nLoan ID Number,Current Balance,Status\n1002,33.00,current\n",
+    )
+    .expect("write pre-parse registry source CSV");
+
+    let assert = profile_cmd()
+        .arg("slice")
+        .arg(&input)
+        .arg("--profile-path")
+        .arg(&frozen)
+        .arg("--out")
+        .arg(&out)
+        .arg("--json")
+        .arg("--no-witness")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    assert_eq!(
+        fs::read_to_string(&out).expect("canonicalized pre-parse output CSV"),
+        "loan_id_number,current_balance,Status\n1002,33.00,current\n"
+    );
+    assert_eq!(envelope["result"]["rows"]["header_rows"], json!([3]));
+    assert_eq!(envelope["result"]["rows"]["data_starts_at"], 4);
+    assert_eq!(envelope["result"]["canonical_headers"]["mapped_count"], 2);
+}
+
+#[test]
+fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
+    let workspace = temp_workspace();
+    copy_annex_registry(workspace.path());
+    let draft = write_registry_draft(workspace.path(), None);
+    let frozen = freeze_registry_draft(workspace.path(), &draft, "collision.frozen.yaml");
+    let cases = [
+        (
+            "alias_alias_collision.csv",
+            "Loan Number,Loan ID Number,Other\n1001,1001B,x\n",
+            "Loan ID Number",
+        ),
+        (
+            "alias_canonical_collision.csv",
+            "Loan Number,loan_id_number,Other\n1001,1001B,x\n",
+            "loan_id_number",
+        ),
+    ];
+
+    for (file_name, csv, expected_second_header) in cases {
+        let input = workspace.path().join(file_name);
+        fs::write(&input, csv).expect("write collision source CSV");
+        let assert = profile_cmd()
+            .arg("slice")
+            .arg(&input)
+            .arg("--profile-path")
+            .arg(&frozen)
+            .arg("--json")
+            .arg("--no-witness")
+            .assert();
+        let envelope = parse_stdout_json(&assert);
+        common::assert_refusal_exit!(assert);
+
+        assert_eq!(envelope["result"]["code"], "E_INVALID_SCHEMA");
+        assert_eq!(
+            envelope["result"]["detail"]["errors"][0]["field"],
+            "column_registry"
+        );
+        let error = envelope["result"]["detail"]["errors"][0]["error"]
+            .as_str()
+            .expect("collision should include error detail");
+        assert!(error.contains("loan_id_number"), "{error}");
+        assert!(error.contains("Loan Number"), "{error}");
+        assert!(error.contains(expected_second_header), "{error}");
+    }
+}
+
+#[test]
 fn slice_fixture_profiles_round_trip_with_lint() {
     let workspace = temp_workspace();
     let cases = [
@@ -535,4 +739,56 @@ fn slice_100mb_dataset_perf_smoke() {
         .assert();
     common::assert_success_exit!(assert);
     assert!(start.elapsed() < Duration::from_secs(15));
+}
+
+fn copy_annex_registry(workspace: &Path) {
+    common::copy_fixture(
+        "registries/annex_columns_v0/registry.json",
+        workspace.join("registries/annex_columns_v0/registry.json"),
+    );
+    common::copy_fixture(
+        "registries/annex_columns_v0/aliases.json",
+        workspace.join("registries/annex_columns_v0/aliases.json"),
+    );
+}
+
+fn write_registry_draft(workspace: &Path, pre_parse: Option<&str>) -> PathBuf {
+    let draft = workspace.join("registry_backed.draft.yaml");
+    fs::write(
+        &draft,
+        format!(
+            r#"schema_version: 1
+status: draft
+format: csv
+column_registry: registries/annex_columns_v0
+{}key:
+  - loan_id_number
+include_columns:
+  - loan_id_number
+  - current_balance
+  - note_rate
+  - general_property_type
+"#,
+            pre_parse.unwrap_or("")
+        ),
+    )
+    .expect("write registry-backed draft profile");
+    draft
+}
+
+fn freeze_registry_draft(workspace: &Path, draft: &Path, file_name: &str) -> PathBuf {
+    let frozen = workspace.join(file_name);
+    let assert = profile_cmd()
+        .arg("freeze")
+        .arg(draft)
+        .arg("--family")
+        .arg("csv.loan_tape.core")
+        .arg("--version")
+        .arg("0")
+        .arg("--out")
+        .arg(&frozen)
+        .arg("--no-witness")
+        .assert();
+    common::assert_success_exit!(assert);
+    frozen
 }

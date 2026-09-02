@@ -192,11 +192,11 @@ pub struct SliceArgs {
     /// Path to the dataset to slice
     pub file: PathBuf,
 
-    /// Frozen or draft profile ID/path with pre_parse directives
+    /// Frozen or draft profile ID/path with optional pre_parse directives or column registry
     #[arg(long)]
     pub profile: Option<String>,
 
-    /// Explicit profile YAML path with pre_parse directives
+    /// Explicit profile YAML path with optional pre_parse directives or column registry
     #[arg(long = "profile-path")]
     pub profile_path: Option<PathBuf>,
 

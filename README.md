@@ -114,7 +114,7 @@ Profile doesn't sit in the stream pipeline (vacuum → hashbytes → lock). Inst
 
 `profile` only answers: **which columns matter, what's the key, and how should values be compared?**
 
-It can also perform a narrow lineage-preserving CSV slice when a profile declares `pre_parse` directives. That slice is not a general transform pipeline: it only removes pre-data rows, normalizes headers, optionally captures units/preamble metadata in a manifest, and emits clean CSV for the existing profile workflow.
+It can also perform a narrow lineage-preserving CSV slice. That slice is not a general transform pipeline: it only removes pre-data rows when configured, materializes registry-backed canonical headers when configured, optionally captures units/preamble metadata in a manifest, and emits clean CSV for the existing profile workflow.
 
 ---
 
@@ -241,14 +241,14 @@ Catches: missing columns, missing key components, type mismatches, and schema dr
 
 ### `profile slice`
 
-Apply profile-driven or ad-hoc pre-parse directives to emit clean CSV:
+Apply profile-driven or ad-hoc pre-parse directives to emit clean CSV. When the profile declares `column_registry`, `slice` also materializes canonical CSV headers after any pre-parse row cleanup:
 
 ```bash
 profile slice vendor_export.csv --profile-path vendor_profile.yaml --out clean.csv --emit-manifest slice.manifest.json
 profile slice vendor_export.csv --mode multi_row_header --header-rows 2,3 --data-starts-at 4
 ```
 
-Without `--out` in human mode, `slice` writes the clean CSV to stdout. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, source encoding, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows. `pre_parse.slice.encoding` and `--encoding` support strict `utf-8`, `windows-1252`, and `latin1` input; output CSV is always UTF-8. When a profile is provided and slice flags override profile directives, `slice` emits explicit warnings.
+Without `--out` in human mode, `slice` writes the clean CSV to stdout. Profiles without `pre_parse` use the flat CSV default: header row 1, data starts at row 2. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, source encoding, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows plus CRV1 receipt fields: `input_hash`, `profile_sha256`, `column_registry_hash`, `canonicalizer_version`, `mapping`, and `unmapped`. `pre_parse.slice.encoding` and `--encoding` support strict `utf-8`, `windows-1252`, and `latin1` input; output CSV is always UTF-8. When a profile is provided and slice flags override profile directives, `slice` emits explicit warnings.
 
 ### `profile emit-discovery`
 

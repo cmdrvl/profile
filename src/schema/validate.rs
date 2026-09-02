@@ -271,12 +271,14 @@ fn validate_pre_parse(profile: &Profile) -> Result<(), RefusalPayload> {
         }
     }
 
-    let last_header_row = slice
-        .header_rows
-        .iter()
-        .copied()
-        .chain(slice.header_at_row)
-        .max();
+    let last_header_row = match slice.mode {
+        SliceMode::PreambleSkip => slice
+            .header_at_row
+            .or_else(|| slice.skip_rows.map(|skip_rows| skip_rows + 1))
+            .or(Some(1)),
+        SliceMode::MultiRowHeader => slice.header_rows.iter().copied().max(),
+        SliceMode::PreambleWithUnits => slice.header_at_row,
+    };
     if let (Some(data_starts_at), Some(last_header_row)) = (slice.data_starts_at, last_header_row)
         && data_starts_at <= last_header_row
     {
@@ -295,14 +297,7 @@ fn validate_pre_parse(profile: &Profile) -> Result<(), RefusalPayload> {
     }
 
     match slice.mode {
-        SliceMode::PreambleSkip => {
-            if slice.header_at_row.is_none() && slice.skip_rows.is_none() {
-                return Err(invalid_schema(
-                    "pre_parse.slice.header_at_row",
-                    "preamble_skip requires header_at_row or skip_rows",
-                ));
-            }
-        }
+        SliceMode::PreambleSkip => {}
         SliceMode::MultiRowHeader => {
             if slice.header_rows.len() < 2 {
                 return Err(invalid_schema(

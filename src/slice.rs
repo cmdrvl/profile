@@ -1,6 +1,8 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::cli::args::{HeaderMergeStrategyArg, SliceArgs, SliceModeArg};
@@ -9,9 +11,12 @@ use crate::refusal::RefusalPayload;
 use crate::resolve::resolver::resolve_profile;
 use crate::schema::{
     HeaderMerge, HeaderMergeStrategy, PreParse, Profile, SliceDirectives, SliceMode,
-    ValidationMode, parse_profile_yaml, validate_frozen_registry_hash, validate_profile,
+    ValidationMode, load_column_registry_aliases, parse_profile_yaml, registry_content_hash,
+    resolve_registry_path, validate_frozen_registry_hash, validate_profile,
 };
 use crate::witness::append::append_for_command;
+
+const CANONICALIZER_VERSION: &str = "profile.canonical_csv_headers.v1";
 
 pub fn headers_from_pre_parse(
     path: &Path,
@@ -19,7 +24,8 @@ pub fn headers_from_pre_parse(
 ) -> Result<Vec<String>, RefusalPayload> {
     let delimiter = resolve_delimiter(&pre_parse.slice)?;
     let source_encoding = resolve_source_encoding(&pre_parse.slice)?;
-    let rows = read_physical_rows(path, delimiter, source_encoding)?;
+    let bytes = read_source_bytes(path)?;
+    let rows = parse_physical_rows(path, &bytes, delimiter, source_encoding)?;
     let plan = build_plan(&pre_parse.slice)?;
     let slice = build_slice(&rows, &plan, &pre_parse.slice)?;
     Ok(slice.headers)
@@ -41,9 +47,16 @@ pub fn run(
 
     let delimiter = resolve_delimiter(&directives)?;
     let source_encoding = resolve_source_encoding(&directives)?;
-    let rows = read_physical_rows(&args.file, delimiter, source_encoding)?;
+    let source_bytes = read_source_bytes(&args.file)?;
+    let input_hash = format!("blake3:{}", blake3::hash(&source_bytes).to_hex());
+    let rows = parse_physical_rows(&args.file, &source_bytes, delimiter, source_encoding)?;
     let plan = build_plan(&directives)?;
-    let slice = build_slice(&rows, &plan, &directives)?;
+    let mut slice = build_slice(&rows, &plan, &directives)?;
+    let canonicalization =
+        canonicalize_slice_headers(profile_path.as_deref(), profile, &slice.headers)?;
+    if let Some(canonicalization) = canonicalization.as_ref() {
+        slice.headers = canonicalization.headers.clone();
+    }
     if let Some(warning) = modal_column_count_warning(profile, slice.headers.len()) {
         warnings.push(warning);
     }
@@ -63,8 +76,10 @@ pub fn run(
             plan: &plan,
             slice: &slice,
             rows: &rows,
+            input_hash: &input_hash,
             output_hash: &output_hash,
             source_encoding,
+            canonicalization: canonicalization.as_ref(),
         });
         let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|error| {
             RefusalPayload::invalid_schema_single(
@@ -86,6 +101,7 @@ pub fn run(
         "source_encoding": source_encoding.label(),
         "mode": directives.mode.as_str(),
         "directives": directive_summary(&directives),
+        "canonical_headers": canonical_header_summary(canonicalization.as_ref()),
         "rows": {
             "input_physical_rows": rows.len(),
             "header_rows": plan.header_rows,
@@ -171,22 +187,23 @@ fn effective_directives(
     args: &SliceArgs,
     profile: Option<&Profile>,
 ) -> Result<(SliceDirectives, Vec<String>), RefusalPayload> {
-    let mut directives = profile
+    let profile_directives = profile
         .and_then(|profile| profile.pre_parse.as_ref())
-        .map(|pre_parse| pre_parse.slice.clone())
-        .unwrap_or_else(|| SliceDirectives {
-            mode: infer_mode_from_args(args),
-            skip_rows: None,
-            header_at_row: None,
-            header_rows: Vec::new(),
-            header_merge: None,
-            data_starts_at: None,
-            delimiter: None,
-            encoding: None,
-            preamble_capture: Some(true),
-            unit_rows_capture: Some(true),
-            unit_rows: Vec::new(),
-        });
+        .map(|pre_parse| pre_parse.slice.clone());
+    let profile_had_directives = profile_directives.is_some();
+    let mut directives = profile_directives.unwrap_or_else(|| SliceDirectives {
+        mode: infer_mode_from_args(args),
+        skip_rows: None,
+        header_at_row: None,
+        header_rows: Vec::new(),
+        header_merge: None,
+        data_starts_at: None,
+        delimiter: None,
+        encoding: None,
+        preamble_capture: Some(true),
+        unit_rows_capture: Some(true),
+        unit_rows: Vec::new(),
+    });
     let mut overridden_flags = Vec::new();
 
     if let Some(mode) = args.mode {
@@ -233,15 +250,7 @@ fn effective_directives(
         overridden_flags.push("--encoding");
     }
 
-    if profile.is_some() && directives.header_rows.is_empty() && directives.header_at_row.is_none()
-    {
-        return Err(RefusalPayload::invalid_schema_single(
-            "pre_parse",
-            "profile does not contain usable pre_parse slice directives",
-        ));
-    }
-
-    let warnings = if profile.is_some() && !overridden_flags.is_empty() {
+    let warnings = if profile_had_directives && !overridden_flags.is_empty() {
         vec![format!(
             "profile pre_parse directives were overridden by CLI flags: {}",
             overridden_flags.join(", ")
@@ -374,14 +383,18 @@ fn resolve_source_encoding(directives: &SliceDirectives) -> Result<SourceEncodin
     }
 }
 
-fn read_physical_rows(
+fn read_source_bytes(path: &Path) -> Result<Vec<u8>, RefusalPayload> {
+    fs::read(path)
+        .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))
+}
+
+fn parse_physical_rows(
     path: &Path,
+    bytes: &[u8],
     delimiter: u8,
     source_encoding: SourceEncoding,
 ) -> Result<Vec<Vec<String>>, RefusalPayload> {
-    let bytes = fs::read(path)
-        .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
-    let decoded = decode_source_bytes(path, &bytes, source_encoding)?;
+    let decoded = decode_source_bytes(path, bytes, source_encoding)?;
     let bytes = preserve_blank_lines_as_csv_records(decoded.as_bytes());
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
@@ -757,6 +770,114 @@ fn render_csv(headers: &[String], rows: &[Vec<String>]) -> Result<Vec<u8>, Refus
     })
 }
 
+#[derive(Debug, Clone)]
+struct CanonicalHeaderMaterialization {
+    headers: Vec<String>,
+    column_registry_hash: String,
+    mapping: Vec<HeaderMapping>,
+    unmapped: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HeaderMapping {
+    position: usize,
+    raw: String,
+    canonical: String,
+    mapped: bool,
+}
+
+fn canonicalize_slice_headers(
+    profile_path: Option<&Path>,
+    profile: Option<&Profile>,
+    headers: &[String],
+) -> Result<Option<CanonicalHeaderMaterialization>, RefusalPayload> {
+    let Some(profile) = profile else {
+        return Ok(None);
+    };
+    let Some(registry_ref) = profile.column_registry.as_deref() else {
+        return Ok(None);
+    };
+    let profile_path = profile_path.ok_or_else(|| {
+        RefusalPayload::invalid_schema_single(
+            "profile",
+            "column registry canonicalization requires a resolved profile path",
+        )
+    })?;
+    let registry_dir = resolve_registry_path(profile_path, registry_ref);
+    let aliases = load_column_registry_aliases(&registry_dir)?;
+    let column_registry_hash = profile
+        .column_registry_hash
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(|| registry_content_hash(&registry_dir))?;
+    let mut canonical_to_raw: HashMap<String, String> = HashMap::new();
+    let mut unmapped_seen = HashSet::new();
+    let mut output_headers = Vec::with_capacity(headers.len());
+    let mut mapping = Vec::with_capacity(headers.len());
+    let mut unmapped = Vec::new();
+
+    for (index, raw) in headers.iter().enumerate() {
+        let canonical = aliases.get(raw).cloned().unwrap_or_else(|| raw.to_owned());
+        if let Some(first_raw) = canonical_to_raw.get(&canonical) {
+            if first_raw != raw {
+                return Err(canonical_header_collision(&canonical, first_raw, raw));
+            }
+        } else {
+            canonical_to_raw.insert(canonical.clone(), raw.clone());
+        }
+
+        let mapped = aliases.contains_key(raw);
+        if !mapped && unmapped_seen.insert(raw.clone()) {
+            unmapped.push(raw.clone());
+        }
+        output_headers.push(canonical.clone());
+        mapping.push(HeaderMapping {
+            position: index + 1,
+            raw: raw.clone(),
+            canonical,
+            mapped,
+        });
+    }
+
+    Ok(Some(CanonicalHeaderMaterialization {
+        headers: output_headers,
+        column_registry_hash,
+        mapping,
+        unmapped,
+    }))
+}
+
+fn canonical_header_collision(
+    canonical: &str,
+    first_raw: &str,
+    second_raw: &str,
+) -> RefusalPayload {
+    RefusalPayload::invalid_schema_single(
+        "column_registry",
+        format!(
+            "ambiguous canonical header '{canonical}': physical headers '{first_raw}' and '{second_raw}' both resolve to it"
+        ),
+    )
+}
+
+fn canonical_header_summary(canonicalization: Option<&CanonicalHeaderMaterialization>) -> Value {
+    match canonicalization {
+        Some(canonicalization) => json!({
+            "applied": true,
+            "canonicalizer_version": CANONICALIZER_VERSION,
+            "mapped_count": canonicalization
+                .mapping
+                .iter()
+                .filter(|entry| entry.mapped)
+                .count(),
+            "unmapped_count": canonicalization.unmapped.len()
+        }),
+        None => json!({
+            "applied": false
+        }),
+    }
+}
+
 struct SliceManifestInputs<'a> {
     args: &'a SliceArgs,
     profile: Option<&'a Profile>,
@@ -764,8 +885,10 @@ struct SliceManifestInputs<'a> {
     plan: &'a SlicePlan,
     slice: &'a SliceOutput,
     rows: &'a [Vec<String>],
+    input_hash: &'a str,
     output_hash: &'a str,
     source_encoding: SourceEncoding,
+    canonicalization: Option<&'a CanonicalHeaderMaterialization>,
 }
 
 fn build_manifest(inputs: SliceManifestInputs<'_>) -> Value {
@@ -776,8 +899,10 @@ fn build_manifest(inputs: SliceManifestInputs<'_>) -> Value {
         plan,
         slice,
         rows,
+        input_hash,
         output_hash,
         source_encoding,
+        canonicalization,
     } = inputs;
 
     let preamble_rows = if directives.preamble_capture.unwrap_or(true) {
@@ -807,7 +932,18 @@ fn build_manifest(inputs: SliceManifestInputs<'_>) -> Value {
         "schema": "profile.slice_manifest.v1",
         "input_path": args.file.display().to_string(),
         "profile_id": profile.and_then(|profile| profile.profile_id.clone()),
+        "profile_sha256": profile.and_then(|profile| profile.profile_sha256.clone()),
         "fingerprint_ref": profile.and_then(|profile| profile.fingerprint_ref.clone()),
+        "input_hash": input_hash,
+        "column_registry_hash": canonicalization
+            .map(|canonicalization| canonicalization.column_registry_hash.clone()),
+        "canonicalizer_version": canonicalization.map(|_| CANONICALIZER_VERSION),
+        "mapping": canonicalization
+            .map(|canonicalization| json!(&canonicalization.mapping))
+            .unwrap_or_else(|| json!([])),
+        "unmapped": canonicalization
+            .map(|canonicalization| json!(&canonicalization.unmapped))
+            .unwrap_or_else(|| json!([])),
         "source_encoding": source_encoding.label(),
         "directives": directive_summary(directives),
         "header_rows": &plan.header_rows,

@@ -32,7 +32,7 @@ Report tools (`rvl`, `compare`, `shape`) need to know which columns to analyze. 
 - A template recognizer (that's `fingerprint`)
 - A diff tool (that's `rvl` / `compare`)
 - A comparability gate (that's `shape`)
-- A general-purpose extraction/transform pipeline. `profile slice` is deliberately narrow: it performs lineage-preserving CSV pre-parse cleanup from explicit directives, not arbitrary transformations.
+- A general-purpose extraction/transform pipeline. `profile slice` is deliberately narrow: it performs lineage-preserving CSV pre-parse cleanup and registry-backed header canonicalization, not arbitrary transformations.
 - A fingerprint (profiles are YAML config, not Rust assertion crates)
 
 It does not tell you *what the data means*.
@@ -125,7 +125,7 @@ Commands:
   draft init <DATASET>   Create a draft profile from a real dataset (CSV header-driven)
   validate <FILE>        Validate a profile against the schema
   lint <PROFILE>         Validate + check a profile against a dataset
-  slice <DATASET>        Apply profile/ad-hoc pre_parse directives and emit clean CSV
+  slice <DATASET>        Apply profile/ad-hoc pre_parse directives and canonical headers, then emit clean CSV
   emit-discovery <CSV>   Emit profile.discovery.v0 candidate template from sliced CSV
   stats <DATASET>        Deterministic structural stats for a dataset
   suggest-key <DATASET>  Rank candidate key columns deterministically
@@ -159,7 +159,7 @@ profile lint <PROFILE> --against <DATASET> [--json]
 
 profile slice <DATASET> [--profile <ID_OR_PATH> | --profile-path <FILE>] [--out <CSV>] [--emit-manifest <JSON>] [--json]
 profile slice <DATASET> --mode <preamble_skip|multi_row_header|preamble_with_units> [--skip-rows <N>] [--header-at-row <N>] [--header-rows <LIST>] [--unit-rows <LIST>] [--data-starts-at <N>] [--encoding <utf-8|windows-1252|latin1>]
-  (applies pre_parse directives, writes clean CSV to --out or stdout in human mode, emits warnings when profile directives are overridden by flags, and can emit an explicit manifest with captured preamble/unit rows)
+  (applies pre_parse directives, writes clean CSV to --out or stdout in human mode, materializes registry-backed canonical CSV headers after row-shape cleanup, and can emit an explicit manifest with captured preamble/unit rows plus CRV1 receipt fields)
 
 profile emit-discovery <SLICED_CSV> --source-file <SOURCE_CSV> --skip-rows <N> [--source-kind <KIND>] [--json]
   (builds deterministic profile.discovery.v0 candidate output for fingerprint template promotion from a caller-selected successful slice)
@@ -228,7 +228,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 |------------|-------------|----------|
 | `doctor` | Read-only diagnostic report | Envelope with doctor result; `--robot-triage` also emits machine-readable JSON without requiring `--json` |
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
-| `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, source encoding, output hash, and lineage metadata; data rows omitted unless `--explicit` |
+| `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, canonical-header summary, source encoding, output hash, and lineage metadata; data rows omitted unless `--explicit` |
 | `emit-discovery` | Canonical discovery candidate object | Envelope with `result` containing a `profile.discovery.v0` payload |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
@@ -765,13 +765,14 @@ Output is a ranked list. When `--json` is provided, output is a JSON array of `{
       f. Exit 0 (all clear) or 1 (issues found) or 2 (refusal from steps a-c)
 
     slice:
-      a. Resolve profile/path and directives, including frozen registry hash drift checks when a profile is supplied → E_IO / E_INVALID_SCHEMA on bad profile access/shape
+      a. Resolve profile/path and directives, including frozen registry hash drift checks when a profile is supplied → E_IO / E_INVALID_SCHEMA on bad profile access/shape. If neither profile `pre_parse` nor CLI row-shape flags are provided, use the flat CSV default: header row 1 and data starts at row 2.
       b. Apply CLI directive overrides       → warning when profile directives are overridden by flags
       c. Read source bytes, decode strictly according to `pre_parse.slice.encoding`/`--encoding` (default `utf-8`; supports `windows-1252` and `latin1`), and parse CSV records → E_IO / E_CSV_PARSE on file/decode/row parse failure
       d. Build sliced output                 → E_EMPTY if no data rows after directives applied
-      e. If expected_shape.modal_column_count is set and differs from output width → warning
-      f. Emit clean CSV + optional manifest + deterministic output_hash
-      g. Exit 0
+      e. If the resolved profile sets `column_registry`, load aliases from the registry relative to the profile path and rewrite header cells to canonical IDs. Unmapped headers pass through unchanged. Refuse with E_INVALID_SCHEMA if two different physical headers resolve to the same canonical ID, including the case where an unmapped raw header already equals another header's canonical ID.
+      f. If expected_shape.modal_column_count is set and differs from output width → warning
+      g. Emit clean CSV + optional manifest + deterministic output_hash. The explicit manifest remains `profile.slice_manifest.v1` and is extended additively with `input_hash`, `profile_sha256`, `column_registry_hash`, `canonicalizer_version` (`profile.canonical_csv_headers.v1` when canonicalization is applied), `mapping` (header-position ordered raw→canonical diagnostics), and `unmapped`.
+      h. Exit 0
 
     emit-discovery:
       a. Open source file bytes            → E_IO if not found or permission denied
