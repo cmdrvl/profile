@@ -53,6 +53,8 @@ pub enum Command {
     Validate(ValidateArgs),
     /// Validate a profile and check column presence against a dataset
     Lint(LintArgs),
+    /// Draft the next profile version from observed dataset drift
+    Evolve(EvolveArgs),
     /// Apply witnessed pre-parse slicing to a CSV-like dataset
     Slice(SliceArgs),
     /// Show structural statistics for a dataset
@@ -203,6 +205,40 @@ pub struct LintArgs {
     /// Required for a workbook with more than one sheet. Ignored for other formats.
     #[arg(long, value_name = "NAME|INDEX")]
     pub sheet: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct EvolveArgs {
+    /// Path to the frozen profile to evolve
+    pub profile: PathBuf,
+
+    /// Path to the new dataset whose headers should be compared
+    #[arg(long)]
+    pub against: PathBuf,
+
+    /// Output path for the mutable next draft profile
+    #[arg(long, visible_alias = "output")]
+    pub out: PathBuf,
+
+    /// JSON output from `fingerprint peek --suggest` for slice-shift detection
+    #[arg(long = "from-peek")]
+    pub from_peek: Option<PathBuf>,
+
+    /// Amount of drift detail to emit
+    #[arg(long, value_enum, default_value_t = EvolveView::Brief)]
+    pub view: EvolveView,
+
+    /// Worksheet when the dataset is an .xlsx/.xls workbook
+    #[arg(long, value_name = "NAME|INDEX")]
+    pub sheet: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "lowercase")]
+pub enum EvolveView {
+    Brief,
+    Delta,
+    Full,
 }
 
 #[derive(Debug, Clone, Args)]

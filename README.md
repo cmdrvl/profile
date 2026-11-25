@@ -242,6 +242,24 @@ profile lint loan_profile.yaml --against loan_tape.csv
 
 Catches: missing columns, missing key components, type mismatches, and schema drift. With a column registry, every key component is checked against canonicalized dataset headers.
 
+### `profile evolve`
+
+Create a mutable draft from a frozen profile and a new dataset without changing the frozen input. The
+delta report identifies added/dropped columns, registry-backed or similar rename candidates, key
+status, and an optional preamble shift from `fingerprint peek --suggest`:
+
+```bash
+profile evolve profiles/csv.loan_tape.core.v0.yaml \
+  --against vendor_export.csv \
+  --out profiles/csv.loan_tape.core.next.draft.yaml \
+  --from-peek vendor_export.peek.json \
+  --view delta --json
+```
+
+The result reports `next_profile_version` and typed `next_actions`; the output remains a draft until
+the operator reviews it, runs `profile lint`, and invokes `profile freeze` with the next version.
+Ambiguous rename candidates are surfaced for confirmation and are never applied silently.
+
 ### `profile slice`
 
 Apply profile-driven or ad-hoc pre-parse directives to emit clean CSV. When the profile declares `column_registry`, `slice` also materializes canonical CSV headers after any pre-parse row cleanup:

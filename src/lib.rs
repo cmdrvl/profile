@@ -15,6 +15,7 @@ pub mod diff;
 pub mod discovery;
 pub mod doctor;
 pub mod draft;
+pub mod evolve;
 pub mod freeze;
 pub mod lint;
 pub mod network;
@@ -114,6 +115,7 @@ fn dispatch(
         },
         Command::Validate(args) => lint::validate::run(args, no_witness),
         Command::Lint(args) => lint::lint::run(args, no_witness),
+        Command::Evolve(args) => evolve::run(args, no_witness),
         Command::Slice(args) => slice::run(args, no_witness, explicit, json_output),
         Command::Stats(args) => stats::stats::run(args, no_witness, explicit),
         Command::SuggestKey(args) => stats::suggest_key::run(args, no_witness),
@@ -169,6 +171,7 @@ fn command_name(command: &Command) -> &'static str {
         },
         Command::Validate(_) => "validate",
         Command::Lint(_) => "lint",
+        Command::Evolve(_) => "evolve",
         Command::Slice(_) => "slice",
         Command::Stats(_) => "stats",
         Command::SuggestKey(_) => "suggest-key",

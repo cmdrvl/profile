@@ -29,7 +29,9 @@
     },
     { "name": "out", "flag": "--out", "aliases": ["--output"], "type": "path", "description": "Canonical output path flag used by profile-producing commands" },
     { "name": "sheet", "flag": "--sheet", "type": "string", "description": "Worksheet (name or 0-based index) when the dataset is an .xlsx/.xls workbook; required for a workbook with more than one sheet. Accepted by draft init, lint, stats, suggest-key and slice" },
-    { "name": "max-arity", "flag": "--max-arity", "type": "integer", "description": "Maximum suggest-key arity (1, 2, or 3); composite tuples use ordered ASCII-trimmed components" }
+    { "name": "max-arity", "flag": "--max-arity", "type": "integer", "description": "Maximum suggest-key arity (1, 2, or 3); composite tuples use ordered ASCII-trimmed components" },
+    { "name": "from-peek", "flag": "--from-peek", "type": "path", "description": "Fingerprint peek JSON used to detect a pre-parse slice shift during profile evolve" },
+    { "name": "view", "flag": "--view", "type": "enum", "values": ["brief", "delta", "full"], "description": "Amount of profile evolve drift detail to emit" }
   ],
 
   "commands": [
@@ -40,6 +42,7 @@
     { "name": "draft init", "description": "Create draft from dataset header" },
     { "name": "validate", "description": "Validate profile against schema" },
     { "name": "lint", "description": "Validate + check against dataset" },
+    { "name": "evolve", "description": "Create a mutable next-version draft from dataset drift and optional peek slice directives" },
     { "name": "slice", "description": "Apply profile/ad-hoc pre_parse directives and registry-backed canonical CSV headers to emit clean CSV plus optional manifest" },
     { "name": "emit-discovery", "description": "Emit a profile.discovery.v0 candidate template from an already-sliced CSV" },
     { "name": "stats", "description": "Deterministic structural stats" },
