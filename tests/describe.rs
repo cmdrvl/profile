@@ -10,52 +10,75 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
         .expect("describe output should be JSON");
     common::assert_success_exit!(assert);
 
+    assert_v1_manifest(&manifest);
+    // The exact command inventory, in order (stronger than the old bare count of 18; `evolve`
+    // was added by profile evolve, 624280c, making 19).
+    let names: Vec<&str> = manifest
+        .get("commands")
+        .and_then(|v| v.as_array())
+        .expect("commands array")
+        .iter()
+        .filter_map(|command| command.get("name").and_then(|v| v.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "doctor",
+            "capabilities",
+            "robot-docs",
+            "draft new",
+            "draft init",
+            "validate",
+            "lint",
+            "evolve",
+            "slice",
+            "emit-discovery",
+            "stats",
+            "suggest-key",
+            "freeze",
+            "list",
+            "show",
+            "diff",
+            "push",
+            "pull",
+            "witness"
+        ]
+    );
+    for expected in ["slice", "emit-discovery", "capabilities", "robot-docs"] {
+        assert!(
+            manifest
+                .get("commands")
+                .and_then(|v| v.as_array())
+                .is_some_and(|commands| {
+                    commands.iter().any(|command| {
+                        command.get("name").and_then(|v| v.as_str()) == Some(expected)
+                    })
+                }),
+            "operator manifest should include top-level {expected}"
+        );
+    }
+}
+
+/// operator.v1 identity: schema_version operator.v1, `tool_version` (v1's rename of the v0
+/// `version`) equal to the crate version, and none of the retired v0 spellings.
+fn assert_v1_manifest(manifest: &Value) {
     assert_eq!(
         manifest.get("schema_version").and_then(|v| v.as_str()),
-        Some("operator.v0")
+        Some("operator.v1")
     );
     assert_eq!(
         manifest.get("name").and_then(|v| v.as_str()),
         Some("profile")
     );
     assert_eq!(
-        manifest
-            .get("subcommands")
-            .and_then(|v| v.as_array())
-            .map(Vec::len),
-        Some(18)
+        manifest.get("tool_version").and_then(|v| v.as_str()),
+        Some(env!("CARGO_PKG_VERSION")),
+        "--describe tool_version must stay aligned with Cargo.toml"
     );
-    assert!(
-        manifest
-            .get("subcommands")
-            .and_then(|v| v.as_array())
-            .is_some_and(|subcommands| {
-                subcommands.iter().any(|subcommand| {
-                    subcommand.get("name").and_then(|v| v.as_str()) == Some("slice")
-                })
-            })
-    );
-    assert!(
-        manifest
-            .get("subcommands")
-            .and_then(|v| v.as_array())
-            .is_some_and(|subcommands| {
-                subcommands.iter().any(|subcommand| {
-                    subcommand.get("name").and_then(|v| v.as_str()) == Some("emit-discovery")
-                })
-            })
-    );
-    for expected in ["capabilities", "robot-docs"] {
+    for retired in ["version", "subcommands"] {
         assert!(
-            manifest
-                .get("subcommands")
-                .and_then(|v| v.as_array())
-                .is_some_and(|subcommands| {
-                    subcommands.iter().any(|subcommand| {
-                        subcommand.get("name").and_then(|v| v.as_str()) == Some(expected)
-                    })
-                }),
-            "operator manifest should include top-level {expected}"
+            manifest.get(retired).is_none(),
+            "operator.v1 must not carry the v0 field `{retired}`"
         );
     }
 }
@@ -67,36 +90,32 @@ fn describe_json_wraps_operator_manifest_with_expected_fields() {
         .arg("--describe")
         .arg("--no-witness")
         .assert();
-    let envelope = parse_stdout_json(&assert);
+    let manifest = parse_stdout_json(&assert);
+    let json_stdout = assert.get_output().stdout.clone();
     common::assert_success_exit!(assert);
 
-    assert_json_envelope_shape(&envelope);
+    // operator.v1: `--describe` prints the manifest itself, with or without --json. The old
+    // profile.v0 wrapper (version/outcome/exit_code/subcommand/result) is gone, and its
+    // absence is pinned so a wrapper cannot silently come back.
+    for wrapper_key in ["outcome", "exit_code", "subcommand", "result", "witness_id"] {
+        assert!(
+            manifest.get(wrapper_key).is_none(),
+            "--describe --json must not wrap the manifest (found `{wrapper_key}`)"
+        );
+    }
+    assert_v1_manifest(&manifest);
     assert_eq!(
-        envelope.get("subcommand").and_then(|v| v.as_str()),
-        Some("describe")
-    );
-    assert_eq!(
-        envelope.get("outcome").and_then(|v| v.as_str()),
-        Some("SUCCESS")
-    );
-    assert_eq!(envelope.get("exit_code").and_then(|v| v.as_i64()), Some(0));
-
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|r| r.get("name"))
-            .and_then(|v| v.as_str()),
-        Some("profile")
-    );
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|r| r.get("exit_codes"))
+        manifest
+            .get("exit_codes")
             .and_then(|codes| codes.get("1"))
             .and_then(|entry| entry.get("meaning"))
             .and_then(|v| v.as_str()),
         Some("ISSUES_FOUND")
     );
+
+    // Same bytes as plain --describe.
+    let plain = profile_cmd().arg("--describe").assert();
+    assert_eq!(json_stdout, plain.get_output().stdout);
 }
 
 #[test]
@@ -113,10 +132,7 @@ fn describe_short_circuits_before_invalid_witness_args_are_parsed() {
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
     common::assert_success_exit!(assert);
 
-    assert_eq!(
-        manifest.get("schema_version").and_then(|v| v.as_str()),
-        Some("operator.v0")
-    );
+    assert_v1_manifest(&manifest);
     assert_eq!(stderr, "");
 }
 
