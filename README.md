@@ -311,6 +311,15 @@ profile --explicit --json stats loan_tape.csv
 
 Each redacted column entry also reports a conservative type (integer, number, boolean, text, or unknown) and nullable flag. Mixed values become unknown; no raw values are retained unless --explicit is requested.
 
+### Profile inspect
+
+Inspect one dataset in a single zero-retention report. It combines format/dialect, row and column metadata, numeric summaries, key candidates, and a conservative header/preamble suggestion:
+
+    profile --json inspect loan_tape.csv
+    profile --json inspect loans.xlsx --sheet loans
+
+String examples are omitted by default. Numeric min/max/quantiles and counts are structural; use the global --explicit flag only when raw examples are intentionally authorized.
+
 ### Profile projections
 
 Frozen profiles can bootstrap downstream constraints without duplicating YAML. Optional stats JSON contributes only type/nullability metadata and never raw examples:

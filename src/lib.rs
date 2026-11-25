@@ -18,6 +18,7 @@ pub mod doctor;
 pub mod draft;
 pub mod evolve;
 pub mod freeze;
+pub mod inspect;
 pub mod lint;
 pub mod network;
 pub mod output;
@@ -120,6 +121,7 @@ fn dispatch(
         Command::Evolve(args) => evolve::run(args, no_witness),
         Command::Slice(args) => slice::run(args, no_witness, explicit, json_output),
         Command::Stats(args) => stats::stats::run(args, no_witness, explicit),
+        Command::Inspect(args) => inspect::run(args, explicit),
         Command::SuggestKey(args) => stats::suggest_key::run(args, no_witness),
         Command::Freeze(args) => freeze::freeze::run(args, no_witness),
         Command::List(args) => resolve::list::run(args, no_witness).map(CommandOutput::success),
@@ -178,6 +180,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Evolve(_) => "evolve",
         Command::Slice(_) => "slice",
         Command::Stats(_) => "stats",
+        Command::Inspect(_) => "inspect",
         Command::SuggestKey(_) => "suggest-key",
         Command::Freeze(_) => "freeze",
         Command::List(_) => "list",

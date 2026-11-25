@@ -59,6 +59,8 @@ pub enum Command {
     Slice(SliceArgs),
     /// Show structural statistics for a dataset
     Stats(StatsArgs),
+    /// Inspect one dataset with deterministic zero-retention structural metadata
+    Inspect(InspectArgs),
     /// Rank candidate key columns by uniqueness
     SuggestKey(SuggestKeyArgs),
     /// Freeze a draft into an immutable, content-addressed profile
@@ -341,6 +343,16 @@ pub struct StatsArgs {
     pub profile: Option<PathBuf>,
     /// Worksheet when the dataset is an .xlsx/.xls workbook: a sheet name or a 0-based index.
     /// Required for a workbook with more than one sheet. Ignored for other formats.
+    #[arg(long, value_name = "NAME|INDEX")]
+    pub sheet: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct InspectArgs {
+    /// Path to the dataset to inspect
+    pub dataset: PathBuf,
+
+    /// Worksheet when the dataset is an .xlsx/.xls workbook
     #[arg(long, value_name = "NAME|INDEX")]
     pub sheet: Option<String>,
 }

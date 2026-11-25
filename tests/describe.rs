@@ -36,6 +36,7 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
             "emit-verify-starter",
             "emit-ddl",
             "stats",
+            "inspect",
             "suggest-key",
             "freeze",
             "list",
