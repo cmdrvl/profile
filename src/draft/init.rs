@@ -1,5 +1,4 @@
 use std::fs;
-use std::fs::File;
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -19,12 +18,10 @@ pub fn run(args: &DraftInitArgs, _no_witness: bool) -> Result<Value, RefusalPayl
         csv::StringRecord::from(crate::slice::headers_from_pre_parse(
             &args.dataset,
             pre_parse,
+            args.sheet.as_deref(),
         )?)
     } else {
-        let file = File::open(&args.dataset).map_err(|error| {
-            RefusalPayload::io(args.dataset.display().to_string(), error.to_string())
-        })?;
-        let mut reader = csv::Reader::from_reader(file);
+        let mut reader = crate::tabular_input::open_dataset(&args.dataset, args.sheet.as_deref())?;
         reader
             .headers()
             .map_err(|error| {
@@ -187,6 +184,7 @@ fn resolve_auto_key(
     let suggest_args = SuggestKeyArgs {
         dataset: args.dataset.clone(),
         top: 1,
+        sheet: args.sheet.clone(),
     };
     let suggest_output = suggest_key::run(&suggest_args, true)?;
 

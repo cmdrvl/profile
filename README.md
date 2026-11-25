@@ -359,6 +359,18 @@ rvl old.csv new.csv --profile loan_profile.yaml --json
 
 ---
 
+## Dataset formats
+
+`draft init`, `suggest-key`, `lint`, `stats` and `slice` read CSV, TSV, JSONL, Parquet and XLSX/XLS datasets. The format is chosen by file extension (`.tsv`, `.jsonl`/`.ndjson`, `.parquet`, `.xlsx`/`.xlsm`/`.xls`; anything else is read as CSV exactly as before). Non-CSV datasets are read through the shared [`cmdrvl-tabular`](https://github.com/cmdrvl/tabular) reader and rendered to CSV in memory, so the same data in any container gives the same `stats`, `suggest-key`, `lint` issues, `draft init` profile and `slice` output (golden tests in `tests/formats.rs`).
+
+- `--sheet <name|index>` picks the worksheet of a workbook (0-based index). A workbook with more than one sheet and no `--sheet` is refused (`E_INPUT_FORMAT`, `tabular_code: E_AMBIGUOUS_SHEET`, the sheet names in `detail.context.sheets`).
+- A file tabular cannot read (unsupported Parquet value type, extension that disagrees with the content, nested JSON value, zip bomb) is refused with `E_INPUT_FORMAT` and tabular's own code; refusals carry coordinates, sheet names and type names, never cell values. A missing file is the ordinary `E_IO`.
+- `.tsv` files are now parsed as tab-separated (previously they were read as comma-separated, i.e. as one column). A `.tsv` file that is really comma-separated is refused with `E_FORMAT`.
+- `slice` over a non-CSV dataset works on the tabular grid (row 1 is the header row tabular reports; `--delimiter` and `--encoding` do not apply). `input_hash` in the manifest is the blake3 of the original file, not of the rendering.
+- Hashes that depend only on the profile (`profile_sha256`, `column_registry_hash`) are unchanged.
+
+---
+
 ## Operational Contract
 
 ### Global flags
@@ -397,7 +409,7 @@ of the CLI. There is no `doctor --fix` mode.
 
 ### Refusal codes
 
-`E_INVALID_SCHEMA`, `E_MISSING_FIELD`, `E_BAD_VERSION`, `E_ALREADY_FROZEN`, `E_IO`, `E_CSV_PARSE`, `E_EMPTY`, `E_COLUMN_NOT_FOUND`
+`E_INVALID_SCHEMA`, `E_MISSING_FIELD`, `E_BAD_VERSION`, `E_ALREADY_FROZEN`, `E_IO`, `E_CSV_PARSE`, `E_EMPTY`, `E_COLUMN_NOT_FOUND`, `E_INPUT_FORMAT`
 
 With `--json`, refusals are emitted in the unified output envelope (`outcome=REFUSAL`, refusal detail in `result`). Without `--json`, refusals are human-readable errors on stderr with the refusal code.
 
@@ -465,7 +477,7 @@ Ensure the profile file is committed and the path is correct. Profiles are plain
 
 | Limitation | Detail |
 |------------|--------|
-| **CSV only** | v0 profiles scope CSV/TSV columns; XLSX sheet/range scoping is deferred |
+| **Profile `format` is still `csv`** | Datasets can be CSV, TSV, JSONL, Parquet or XLSX (see "Dataset formats"), but a profile's own `format:` field only accepts `csv`, and there is no `sheet:` key in profile YAML or `pre_parse`: the worksheet is a `--sheet` CLI flag. Declaring format/sheet in the profile is the multi-format `ProfileFormat` work (bd-cgd). |
 | **Single key type** | Composite keys supported, but only column-based — no expression keys |
 | **No auto-update** | Profile doesn't auto-detect schema changes — use `lint` to catch drift |
 | **Registry paths are local** | Profiles can reference local column registries, but registry distribution/resolution is still path-based in v0 |

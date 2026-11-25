@@ -25,6 +25,7 @@ pub mod resolve;
 pub mod schema;
 pub mod slice;
 pub mod stats;
+pub mod tabular_input;
 pub mod witness;
 
 type HandlerResult = Result<CommandOutput, RefusalPayload>;

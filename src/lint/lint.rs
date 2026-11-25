@@ -1,5 +1,4 @@
 use std::fs;
-use std::fs::File;
 
 use serde_json::json;
 
@@ -20,10 +19,7 @@ pub fn run(args: &LintArgs, no_witness: bool) -> Result<CommandOutput, RefusalPa
     validate_profile(&profile, ValidationMode::Validate)?;
     validate_frozen_registry_hash(&args.profile, &profile)?;
 
-    let file = File::open(&args.against).map_err(|error| {
-        RefusalPayload::io(args.against.display().to_string(), error.to_string())
-    })?;
-    let mut reader = csv::Reader::from_reader(file);
+    let mut reader = crate::tabular_input::open_dataset(&args.against, args.sheet.as_deref())?;
 
     let headers = reader
         .headers()

@@ -22,6 +22,8 @@ pub enum RefusalCode {
     Empty,
     /// Column not found in dataset
     ColumnNotFound,
+    /// TSV / JSONL / Parquet / XLSX input refused by the shared tabular reader
+    InputFormat,
 }
 
 impl RefusalCode {
@@ -36,6 +38,7 @@ impl RefusalCode {
             Self::CsvParse => "E_CSV_PARSE",
             Self::Empty => "E_EMPTY",
             Self::ColumnNotFound => "E_COLUMN_NOT_FOUND",
+            Self::InputFormat => "E_INPUT_FORMAT",
         }
     }
 
@@ -50,6 +53,9 @@ impl RefusalCode {
             Self::CsvParse => "Can't parse dataset",
             Self::Empty => "Dataset missing header or data rows required for operation",
             Self::ColumnNotFound => "Column not found in dataset",
+            Self::InputFormat => {
+                "Input refused by the shared tabular reader (TSV, JSONL, Parquet, XLSX)"
+            }
         }
     }
 
@@ -61,7 +67,8 @@ impl RefusalCode {
             | Self::BadVersion
             | Self::CsvParse
             | Self::Empty
-            | Self::ColumnNotFound => "fix_input",
+            | Self::ColumnNotFound
+            | Self::InputFormat => "fix_input",
             Self::AlreadyFrozen | Self::Io => "escalate",
         }
     }

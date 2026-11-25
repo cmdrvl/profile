@@ -63,6 +63,16 @@ pub struct CsvParseDetail {
     pub error: String,
 }
 
+/// Detail for a JSONL / Parquet / XLSX input refused by the shared tabular reader. `context`
+/// holds only coordinates, sheet names and type names, never cell values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputFormatDetail {
+    pub path: String,
+    pub tabular_code: String,
+    pub detail: String,
+    pub context: Value,
+}
+
 /// Empty dataset error detail
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmptyDetail {
@@ -157,6 +167,24 @@ impl RefusalPayload {
             CsvParseDetail {
                 path: path.into(),
                 error: error.into(),
+            },
+        )
+    }
+
+    /// Create an input-format refusal from the shared tabular reader.
+    pub fn input_format(
+        path: impl Into<String>,
+        tabular_code: impl Into<String>,
+        detail: impl Into<String>,
+        context: Value,
+    ) -> Self {
+        Self::new(
+            RefusalCode::InputFormat,
+            InputFormatDetail {
+                path: path.into(),
+                tabular_code: tabular_code.into(),
+                detail: detail.into(),
+                context,
             },
         )
     }

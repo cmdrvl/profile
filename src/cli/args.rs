@@ -179,6 +179,10 @@ pub struct DraftInitArgs {
     /// JSON output from `fingerprint peek --suggest` used to seed pre_parse directives
     #[arg(long = "from-peek")]
     pub from_peek: Option<PathBuf>,
+    /// Worksheet when the dataset is an .xlsx/.xls workbook: a sheet name or a 0-based index.
+    /// Required for a workbook with more than one sheet. Ignored for other formats.
+    #[arg(long, value_name = "NAME|INDEX")]
+    pub sheet: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -195,6 +199,10 @@ pub struct LintArgs {
     /// Path to the dataset to check columns against
     #[arg(long)]
     pub against: PathBuf,
+    /// Worksheet when the dataset is an .xlsx/.xls workbook: a sheet name or a 0-based index.
+    /// Required for a workbook with more than one sheet. Ignored for other formats.
+    #[arg(long, value_name = "NAME|INDEX")]
+    pub sheet: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -249,6 +257,10 @@ pub struct SliceArgs {
     /// Encoding label: utf-8, windows-1252, or latin1.
     #[arg(long)]
     pub encoding: Option<String>,
+    /// Worksheet when the dataset is an .xlsx/.xls workbook: a sheet name or a 0-based index.
+    /// Required for a workbook with more than one sheet. Ignored for other formats.
+    #[arg(long, value_name = "NAME|INDEX")]
+    pub sheet: Option<String>,
 
     /// Output CSV path. If omitted in human mode, clean CSV is written to stdout.
     #[arg(long, visible_alias = "output")]
@@ -283,6 +295,10 @@ pub struct StatsArgs {
     /// Scope stats to columns in this profile
     #[arg(long)]
     pub profile: Option<PathBuf>,
+    /// Worksheet when the dataset is an .xlsx/.xls workbook: a sheet name or a 0-based index.
+    /// Required for a workbook with more than one sheet. Ignored for other formats.
+    #[arg(long, value_name = "NAME|INDEX")]
+    pub sheet: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -293,6 +309,10 @@ pub struct SuggestKeyArgs {
     /// Number of top candidates to return
     #[arg(long, default_value_t = 5)]
     pub top: usize,
+    /// Worksheet when the dataset is an .xlsx/.xls workbook: a sheet name or a 0-based index.
+    /// Required for a workbook with more than one sheet. Ignored for other formats.
+    #[arg(long, value_name = "NAME|INDEX")]
+    pub sheet: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]

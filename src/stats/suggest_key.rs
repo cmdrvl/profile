@@ -1,9 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::fs::File;
 use std::path::Path;
 
-use csv::ReaderBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -42,11 +40,7 @@ impl ColumnStats {
 }
 
 pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
-    let file = File::open(&args.dataset).map_err(|error| {
-        RefusalPayload::io(args.dataset.display().to_string(), error.to_string())
-    })?;
-
-    let mut reader = ReaderBuilder::new().has_headers(true).from_reader(file);
+    let mut reader = crate::tabular_input::open_dataset(&args.dataset, args.sheet.as_deref())?;
     let headers = reader
         .headers()
         .map_err(|error| {
@@ -119,7 +113,7 @@ pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<CommandOutput, Ref
 }
 
 fn analyze_columns(
-    reader: &mut csv::Reader<File>,
+    reader: &mut csv::Reader<Box<dyn std::io::Read>>,
     headers: &[String],
     dataset_path: &Path,
 ) -> Result<Vec<KeyCandidate>, RefusalPayload> {

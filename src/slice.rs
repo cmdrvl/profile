@@ -21,10 +21,16 @@ const CANONICALIZER_VERSION: &str = "profile.canonical_csv_headers.v1";
 pub fn headers_from_pre_parse(
     path: &Path,
     pre_parse: &PreParse,
+    sheet: Option<&str>,
 ) -> Result<Vec<String>, RefusalPayload> {
-    let delimiter = resolve_delimiter(&pre_parse.slice)?;
-    let source_encoding = resolve_source_encoding(&pre_parse.slice)?;
-    let bytes = read_source_bytes(path)?;
+    let mut delimiter = resolve_delimiter(&pre_parse.slice)?;
+    let mut source_encoding = resolve_source_encoding(&pre_parse.slice)?;
+    if crate::tabular_input::is_tabular_path(path) {
+        // Rendered by tabular as UTF-8 comma-separated text.
+        delimiter = b',';
+        source_encoding = SourceEncoding::Utf8;
+    }
+    let bytes = read_source_bytes(path, sheet)?;
     let rows = parse_physical_rows(path, &bytes, delimiter, source_encoding)?;
     let plan = build_plan(&pre_parse.slice)?;
     let slice = build_slice(&rows, &plan, &pre_parse.slice)?;
@@ -45,10 +51,24 @@ pub fn run(
     let (directives, mut warnings) = effective_directives(args, profile)?;
     validate_directives(&directives)?;
 
-    let delimiter = resolve_delimiter(&directives)?;
-    let source_encoding = resolve_source_encoding(&directives)?;
-    let source_bytes = read_source_bytes(&args.file)?;
-    let input_hash = format!("blake3:{}", blake3::hash(&source_bytes).to_hex());
+    let mut delimiter = resolve_delimiter(&directives)?;
+    let mut source_encoding = resolve_source_encoding(&directives)?;
+    let tabular = crate::tabular_input::is_tabular_path(&args.file);
+    if tabular {
+        // Rendered by tabular as UTF-8 comma-separated text; `input_hash` below still
+        // identifies the original file, not the rendering.
+        delimiter = b',';
+        source_encoding = SourceEncoding::Utf8;
+    }
+    let source_bytes = read_source_bytes(&args.file, args.sheet.as_deref())?;
+    let input_hash = if tabular {
+        let original = fs::read(&args.file).map_err(|error| {
+            RefusalPayload::io(args.file.display().to_string(), error.to_string())
+        })?;
+        format!("blake3:{}", blake3::hash(&original).to_hex())
+    } else {
+        format!("blake3:{}", blake3::hash(&source_bytes).to_hex())
+    };
     let rows = parse_physical_rows(&args.file, &source_bytes, delimiter, source_encoding)?;
     let plan = build_plan(&directives)?;
     let mut slice = build_slice(&rows, &plan, &directives)?;
@@ -383,7 +403,10 @@ fn resolve_source_encoding(directives: &SliceDirectives) -> Result<SourceEncodin
     }
 }
 
-fn read_source_bytes(path: &Path) -> Result<Vec<u8>, RefusalPayload> {
+fn read_source_bytes(path: &Path, sheet: Option<&str>) -> Result<Vec<u8>, RefusalPayload> {
+    if crate::tabular_input::is_tabular_path(path) {
+        return crate::tabular_input::render_csv(path, sheet);
+    }
     fs::read(path)
         .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))
 }

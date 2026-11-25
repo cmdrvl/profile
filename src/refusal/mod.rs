@@ -10,7 +10,8 @@ pub mod payload;
 pub use codes::RefusalCode;
 pub use payload::{
     AlreadyFrozenDetail, BadVersionDetail, ColumnNotFoundDetail, CsvParseDetail, EmptyDetail,
-    FieldError, InvalidSchemaDetail, IoDetail, MissingFieldDetail, RefusalPayload,
+    FieldError, InputFormatDetail, InvalidSchemaDetail, IoDetail, MissingFieldDetail,
+    RefusalPayload,
 };
 
 // All exports are handled above

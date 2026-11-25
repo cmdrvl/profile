@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fs::File;
 
 use csv::StringRecord;
 use serde_json::json;
@@ -47,11 +46,7 @@ pub fn run(
     no_witness: bool,
     explicit: bool,
 ) -> Result<CommandOutput, RefusalPayload> {
-    let file = File::open(&args.dataset).map_err(|error| {
-        RefusalPayload::io(args.dataset.display().to_string(), error.to_string())
-    })?;
-
-    let mut reader = csv::Reader::from_reader(file);
+    let mut reader = crate::tabular_input::open_dataset(&args.dataset, args.sheet.as_deref())?;
     let headers = read_headers(&mut reader, &args.dataset.display().to_string())?;
 
     let selected = resolve_selected_columns(args, &headers)?;
@@ -134,7 +129,7 @@ pub fn run(
 }
 
 fn read_headers(
-    reader: &mut csv::Reader<File>,
+    reader: &mut csv::Reader<Box<dyn std::io::Read>>,
     dataset_path: &str,
 ) -> Result<StringRecord, RefusalPayload> {
     let headers = reader
