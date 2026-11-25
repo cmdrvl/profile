@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![recursion_limit = "512"]
 
 use clap::{Parser, error::ErrorKind};
 use serde_json::Value;
@@ -21,6 +22,7 @@ pub mod lint;
 pub mod network;
 pub mod output;
 pub(crate) mod paths;
+pub mod projection;
 pub mod refusal;
 pub mod resolve;
 pub mod schema;
@@ -124,6 +126,8 @@ fn dispatch(
         Command::Show(args) => resolve::show::run(args, no_witness),
         Command::Diff(args) => diff::diff::run(args, no_witness).map(CommandOutput::success),
         Command::EmitDiscovery(args) => discovery::emit::run(args),
+        Command::EmitVerifyStarter(args) => projection::emit_verify_starter(args, no_witness),
+        Command::EmitDdl(args) => projection::emit_ddl(args, no_witness),
         Command::Push(args) => network::push::run(args, no_witness),
         Command::Pull(args) => network::pull::run(args, no_witness).map(CommandOutput::success),
         Command::Witness(WitnessArgs { command }) => match command {
@@ -180,6 +184,8 @@ fn command_name(command: &Command) -> &'static str {
         Command::Show(_) => "show",
         Command::Diff(_) => "diff",
         Command::EmitDiscovery(_) => "emit-discovery",
+        Command::EmitVerifyStarter(_) => "emit-verify-starter",
+        Command::EmitDdl(_) => "emit-ddl",
         Command::Push(_) => "push",
         Command::Pull(_) => "pull",
         Command::Witness(WitnessArgs { command }) => match command {

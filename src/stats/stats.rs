@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use csv::StringRecord;
 use serde_json::json;
@@ -7,8 +7,8 @@ use crate::cli::args::StatsArgs;
 use crate::output::json::{CommandOutput, ProfileRef};
 use crate::refusal::RefusalPayload;
 use crate::schema::{
-    ValidationMode, build_header_index, load_column_registry_aliases, parse_profile_yaml,
-    resolve_registry_path, validate_frozen_registry_hash, validate_profile,
+    ColumnMetadata, ColumnType, ValidationMode, build_header_index, load_column_registry_aliases,
+    parse_profile_yaml, resolve_registry_path, validate_frozen_registry_hash, validate_profile,
 };
 use crate::witness::append::append_for_command;
 
@@ -19,6 +19,7 @@ struct ColumnAccumulator {
     null_count: usize,
     values: HashSet<String>,
     example: Option<String>,
+    observed_types: [bool; 4],
 }
 
 struct SelectedColumns {
@@ -37,7 +38,32 @@ impl ColumnAccumulator {
             self.example = Some(value.to_string());
         }
 
+        let type_slot = if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
+        {
+            2
+        } else if value.parse::<i64>().is_ok() {
+            0
+        } else if value.parse::<f64>().is_ok() {
+            1
+        } else {
+            3
+        };
+        self.observed_types[type_slot] = true;
+
         self.values.insert(value.to_string());
+    }
+
+    fn inferred_type(&self) -> ColumnType {
+        let [integer, number, boolean, text] = self.observed_types;
+        match (integer, number, boolean, text) {
+            (true, false, false, false) => ColumnType::Integer,
+            (true, true, false, false) => ColumnType::Number,
+            (false, true, false, false) => ColumnType::Number,
+            (false, false, true, false) => ColumnType::Boolean,
+            (false, false, false, true) => ColumnType::Text,
+            (false, false, false, false) => ColumnType::Unknown,
+            _ => ColumnType::Unknown,
+        }
     }
 }
 
@@ -88,6 +114,8 @@ pub fn run(
 
             let mut col = json!({
                 "name": name,
+                "type": accumulator.inferred_type().as_str(),
+                "nullable": accumulator.null_count > 0,
                 "null_rate": null_rate,
                 "uniqueness": uniqueness,
                 "key_viable": key_viable,
@@ -126,6 +154,47 @@ pub fn run(
     Ok(CommandOutput::success(result)
         .with_profile_ref(selected.profile_ref)
         .with_witness_id(witness_id))
+}
+
+/// Infer only non-sensitive column metadata. This intentionally retains no values or examples
+/// and uses `unknown` for mixed columns rather than guessing a narrower type.
+pub fn infer_column_metadata(
+    dataset: &std::path::Path,
+    sheet: Option<&str>,
+    aliases: Option<&std::collections::HashMap<String, String>>,
+) -> Result<BTreeMap<String, ColumnMetadata>, RefusalPayload> {
+    let mut reader = crate::tabular_input::open_dataset(dataset, sheet)?;
+    let headers = read_headers(&mut reader, &dataset.display().to_string())?;
+    let mut accumulators = (0..headers.len())
+        .map(|_| ColumnAccumulator::default())
+        .collect::<Vec<_>>();
+
+    for record in reader.records() {
+        let record = record.map_err(|error| {
+            RefusalPayload::csv_parse(dataset.display().to_string(), error.to_string())
+        })?;
+        for (index, accumulator) in accumulators.iter_mut().enumerate() {
+            accumulator.observe(record.get(index).unwrap_or_default());
+        }
+    }
+
+    Ok(headers
+        .iter()
+        .zip(accumulators)
+        .map(|(name, accumulator)| {
+            let canonical = crate::schema::canonicalize_profile_column(name, aliases);
+            (
+                canonical,
+                ColumnMetadata {
+                    type_: Some(accumulator.inferred_type()),
+                    nullable: Some(accumulator.null_count > 0),
+                    unit: None,
+                    sensitivity: None,
+                    airlock_class: None,
+                },
+            )
+        })
+        .collect())
 }
 
 fn read_headers(

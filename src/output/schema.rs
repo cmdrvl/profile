@@ -47,8 +47,8 @@ pub fn generate_profile_schema() -> Value {
             },
             "format": {
                 "type": "string",
-                "enum": ["csv"],
-                "description": "Dataset format (only CSV supported in v0.1)"
+                "enum": ["csv", "tsv", "parquet", "jsonl", "xlsx"],
+                "description": "Dataset container format"
             },
             "column_registry": {
                 "type": "string",
@@ -64,6 +64,8 @@ pub fn generate_profile_schema() -> Value {
                 "type": "object",
                 "description": "Optional witnessed slicing directives for pre-parser cleanup before normal profile operations",
                 "properties": {
+                    "sheet": {"type": "string", "minLength": 1},
+                    "fingerprint_extract": {"type": "string", "minLength": 1},
                     "expected_shape": {
                         "type": "object",
                         "properties": {
@@ -121,6 +123,30 @@ pub fn generate_profile_schema() -> Value {
                 },
                 "required": ["slice"],
                 "additionalProperties": false
+            },
+            "columns": {
+                "type": "object",
+                "description": "Optional metadata keyed by canonical column ID",
+                "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["integer", "number", "boolean", "text", "date", "unknown"]
+                        },
+                        "nullable": {"type": "boolean"},
+                        "unit": {"type": "string", "minLength": 1},
+                        "sensitivity": {
+                            "type": "string",
+                            "enum": ["public", "derived", "protected"]
+                        },
+                        "airlock_class": {
+                            "type": "string",
+                            "enum": ["telemetry", "derived_text", "forbidden"]
+                        }
+                    },
+                    "additionalProperties": false
+                }
             },
             "hashing": {
                 "type": "object",

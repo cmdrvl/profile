@@ -33,6 +33,8 @@ fn describe_human_emits_operator_manifest_without_subcommand() {
             "evolve",
             "slice",
             "emit-discovery",
+            "emit-verify-starter",
+            "emit-ddl",
             "stats",
             "suggest-key",
             "freeze",
@@ -175,6 +177,11 @@ fn schema_json_short_circuits_before_invalid_freeze_args_are_parsed() {
         envelope["result"]["properties"]["column_registry_hash"]["pattern"],
         "^blake3:[a-f0-9]{64}$"
     );
+    assert_eq!(
+        envelope["result"]["properties"]["format"]["enum"],
+        serde_json::json!(["csv", "tsv", "parquet", "jsonl", "xlsx"])
+    );
+    assert!(envelope["result"]["properties"]["columns"].is_object());
     assert_eq!(stderr, "");
 }
 

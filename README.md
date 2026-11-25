@@ -125,8 +125,10 @@ A profile is a YAML file with a defined schema:
 ```yaml
 profile_id: "csv.loan_tape.core.v0"
 profile_version: 0
+format: csv
 column_registry: "registries/annex-columns-v0"
 pre_parse:
+  sheet: loans
   slice:
     mode: preamble_skip
     skip_rows: 3
@@ -143,6 +145,13 @@ include_columns:
 key:
   - loan_id
   - property_id
+columns:
+  current_balance:
+    type: number
+    nullable: false
+    unit: USD
+    sensitivity: protected
+    airlock_class: forbidden
 equivalence:
   order: "order-invariant"
   float_decimals: 6
@@ -156,7 +165,9 @@ equivalence:
 | `column_registry` | string | Optional canon registry path used to normalize raw headers to canonical column IDs before scoping |
 | `column_registry_hash` | string | Frozen-only `blake3:<hex>` hash over length-framed registry bytes, present when `column_registry` is set |
 | `fingerprint_ref` | string | Optional upstream fingerprint ID used as pre-parse lineage |
-| `pre_parse` | object | Optional CSV slicing directives (`preamble_skip`, `multi_row_header`, `preamble_with_units`) |
+| `format` | enum | `csv`, `tsv`, `parquet`, `jsonl`, or `xlsx` |
+| `pre_parse` | object | Optional sheet/fingerprint selector plus slicing directives (`preamble_skip`, `multi_row_header`, `preamble_with_units`) |
+| `columns` | map | Optional canonical-column metadata: type, nullable, unit, sensitivity, and airlock class |
 | `include_columns` | string[] | Columns to include in analysis (others ignored) |
 | `key` | string[] | Ordered zero-or-more columns used for row alignment; names must be non-empty and unique |
 | `equivalence.order` | string | `"order-invariant"` or `"order-sensitive"` |
@@ -204,13 +215,13 @@ profile robot-docs guide
 
 ### `profile draft init`
 
-Generate a draft profile from a CSV header:
+Generate a draft profile from a tabular dataset:
 
 ```bash
 profile draft init loan_tape.csv --out loan_profile.yaml
 ```
 
-Auto-populates `include_columns` from the header. You edit the draft to remove unwanted columns and set the key.
+Auto-populates include_columns and conservative columns type/nullability metadata from the header and rows. You edit the draft to remove unwanted columns and set the key.
 When headers vary across providers, add `--column-registry registries/annex-columns-v0` to write canonical column IDs into the draft instead of raw header spellings.
 For messy exports, seed pre-parse directives from `fingerprint peek --suggest`:
 
@@ -297,6 +308,18 @@ profile stats loan_tape.csv
 profile --explicit --json stats loan_tape.csv
 # includes per-column example values
 ```
+
+Each redacted column entry also reports a conservative type (integer, number, boolean, text, or unknown) and nullable flag. Mixed values become unknown; no raw values are retained unless --explicit is requested.
+
+### Profile projections
+
+Frozen profiles can bootstrap downstream constraints without duplicating YAML. Optional stats JSON contributes only type/nullability metadata and never raw examples:
+
+    profile --json emit-verify-starter profiles/csv.loan_tape.core.v0.yaml --stats stats.json
+    profile --json emit-ddl profiles/csv.loan_tape.core.v0.yaml --stats stats.json \
+      --dialect postgres --table loan_tape --out loan_tape.sql
+
+The first emits verify.rules.v1; the second emits twinning.ddl.v1 for Postgres or Snowflake. Both require a frozen profile and are deterministic projections apart from an explicit --out artifact.
 
 ### `profile freeze`
 
@@ -498,7 +521,7 @@ Ensure the profile file is committed and the path is correct. Profiles are plain
 
 | Limitation | Detail |
 |------------|--------|
-| **Profile `format` is still `csv`** | Datasets can be CSV, TSV, JSONL, Parquet or XLSX (see "Dataset formats"), but a profile's own `format:` field only accepts `csv`, and there is no `sheet:` key in profile YAML or `pre_parse`: the worksheet is a `--sheet` CLI flag. Declaring format/sheet in the profile is the multi-format `ProfileFormat` work (bd-cgd). |
+| **Profile format metadata** | Profiles may declare csv, tsv, jsonl, parquet, or xlsx; workbook sheet and fingerprint selectors are optional pre_parse metadata. Dataset reads still use the shared tabular reader and an explicit --sheet when a workbook is ambiguous. |
 | **Single key type** | Composite keys supported, but only column-based — no expression keys |
 | **No auto-update** | Profile doesn't auto-detect schema changes — use `lint` to catch drift |
 | **Registry paths are local** | Profiles can reference local column registries, but registry distribution/resolution is still path-based in v0 |

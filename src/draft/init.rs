@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 
 use serde::Serialize;
@@ -43,6 +44,17 @@ pub fn run(args: &DraftInitArgs, _no_witness: bool) -> Result<Value, RefusalPayl
         .transpose()?;
     let include_columns = canonicalize_header_sequence(&headers, column_aliases.as_ref());
     let key = resolve_key(args, column_aliases.as_ref())?;
+    let columns = if pre_parse.is_none() {
+        crate::stats::stats::infer_column_metadata(
+            &args.dataset,
+            args.sheet.as_deref(),
+            column_aliases.as_ref(),
+        )?
+    } else {
+        // A pre-parse profile needs the slice applied before inference. Keep metadata absent
+        // until that witnessed slice is materialized rather than infer from preamble rows.
+        BTreeMap::new()
+    };
 
     let profile = Profile {
         schema_version: 1,
@@ -60,6 +72,7 @@ pub fn run(args: &DraftInitArgs, _no_witness: bool) -> Result<Value, RefusalPayl
         column_registry_hash: None,
         fingerprint_ref: None,
         pre_parse,
+        columns,
         hashing: None,
         equivalence: Some(Equivalence {
             order: None,
@@ -151,6 +164,8 @@ fn load_pre_parse_from_peek(
             });
 
     Ok(Some(crate::schema::PreParse {
+        sheet: args.sheet.clone(),
+        fingerprint_extract: None,
         expected_shape,
         slice,
     }))
@@ -238,6 +253,10 @@ fn resolve_auto_key(
 fn resolve_profile_format(format: &DatasetFormat) -> Result<ProfileFormat, RefusalPayload> {
     match format {
         DatasetFormat::Csv => Ok(ProfileFormat::Csv),
+        DatasetFormat::Tsv => Ok(ProfileFormat::Tsv),
+        DatasetFormat::Parquet => Ok(ProfileFormat::Parquet),
+        DatasetFormat::Jsonl => Ok(ProfileFormat::Jsonl),
+        DatasetFormat::Xlsx => Ok(ProfileFormat::Xlsx),
     }
 }
 
@@ -248,6 +267,7 @@ fn render_yaml(profile: &Profile) -> Result<String, RefusalPayload> {
         format: profile.format,
         column_registry: profile.column_registry.as_deref(),
         pre_parse: profile.pre_parse.as_ref(),
+        columns: &profile.columns,
         equivalence: profile.equivalence.as_ref(),
         key: profile.key.as_slice(),
         include_columns: profile.include_columns.as_slice(),
@@ -274,6 +294,8 @@ struct DraftTemplate<'a> {
     column_registry: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pre_parse: Option<&'a crate::schema::PreParse>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    columns: &'a BTreeMap<String, crate::schema::ColumnMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     equivalence: Option<&'a Equivalence>,
     key: &'a [String],

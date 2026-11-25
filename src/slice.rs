@@ -48,6 +48,14 @@ pub fn run(
     let profile_path = resolved_profile
         .as_ref()
         .map(|resolved| resolved.path.clone());
+    let sheet = args.sheet.as_deref().or_else(|| {
+        profile.and_then(|profile| {
+            profile
+                .pre_parse
+                .as_ref()
+                .and_then(|pre_parse| pre_parse.sheet.as_deref())
+        })
+    });
     let (directives, mut warnings) = effective_directives(args, profile)?;
     validate_directives(&directives)?;
 
@@ -60,7 +68,7 @@ pub fn run(
         delimiter = b',';
         source_encoding = SourceEncoding::Utf8;
     }
-    let source_bytes = read_source_bytes(&args.file, args.sheet.as_deref())?;
+    let source_bytes = read_source_bytes(&args.file, sheet)?;
     let input_hash = if tabular {
         let original = fs::read(&args.file).map_err(|error| {
             RefusalPayload::io(args.file.display().to_string(), error.to_string())
@@ -343,7 +351,10 @@ fn validate_directives(directives: &SliceDirectives) -> Result<(), RefusalPayloa
         column_registry: None,
         column_registry_hash: None,
         fingerprint_ref: None,
+        columns: std::collections::BTreeMap::new(),
         pre_parse: Some(PreParse {
+            sheet: None,
+            fingerprint_extract: None,
             expected_shape: None,
             slice: directives.clone(),
         }),

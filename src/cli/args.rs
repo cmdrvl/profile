@@ -71,6 +71,10 @@ pub enum Command {
     Diff(DiffArgs),
     /// Emit a profile.discovery.v0 candidate template from a successful sliced CSV
     EmitDiscovery(EmitDiscoveryArgs),
+    /// Emit starter verify constraints from a frozen profile and optional stats JSON
+    EmitVerifyStarter(EmitVerifyStarterArgs),
+    /// Emit deterministic twinning DDL from a frozen profile and optional stats JSON
+    EmitDdl(EmitDdlArgs),
     /// Publish a frozen profile to data-fabric (deferred in v0.1)
     Push(PushArgs),
     /// Fetch a frozen profile by ID from data-fabric (deferred in v0.1)
@@ -144,6 +148,10 @@ pub enum DraftCommand {
 #[derive(Debug, Clone, ValueEnum)]
 pub enum DatasetFormat {
     Csv,
+    Tsv,
+    Parquet,
+    Jsonl,
+    Xlsx,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -418,6 +426,49 @@ pub struct EmitDiscoveryArgs {
     /// Optional source kind hint used to name the candidate template
     #[arg(long = "source-kind")]
     pub source_kind: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct EmitVerifyStarterArgs {
+    /// Path to a frozen profile YAML
+    pub profile: PathBuf,
+
+    /// Optional profile stats JSON used to fill inferred type/nullability
+    #[arg(long)]
+    pub stats: Option<PathBuf>,
+
+    /// Optional JSON output path; stdout remains the command result
+    #[arg(long, visible_alias = "output")]
+    pub out: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "lowercase")]
+pub enum DdlDialect {
+    Postgres,
+    Snowflake,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct EmitDdlArgs {
+    /// Path to a frozen profile YAML
+    pub profile: PathBuf,
+
+    /// Optional profile stats JSON used to fill inferred type/nullability
+    #[arg(long)]
+    pub stats: Option<PathBuf>,
+
+    /// SQL table name; defaults to the profile family or ID
+    #[arg(long)]
+    pub table: Option<String>,
+
+    /// SQL dialect for the generated DDL
+    #[arg(long, value_enum, default_value_t = DdlDialect::Postgres)]
+    pub dialect: DdlDialect,
+
+    /// Optional SQL output path; stdout remains the command result
+    #[arg(long, visible_alias = "output")]
+    pub out: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]

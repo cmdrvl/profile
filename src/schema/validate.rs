@@ -18,10 +18,6 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
         return Err(invalid_schema("schema_version", "must be 1"));
     }
 
-    if !matches!(profile.format, crate::schema::ProfileFormat::Csv) {
-        return Err(invalid_schema("format", "must be csv"));
-    }
-
     if profile
         .column_registry
         .as_deref()
@@ -61,6 +57,25 @@ pub fn validate_profile(profile: &Profile, mode: ValidationMode) -> Result<(), R
     }
 
     validate_pre_parse(profile)?;
+
+    for (column, metadata) in &profile.columns {
+        if column.trim().is_empty() {
+            return Err(invalid_schema(
+                "columns",
+                "metadata keys must be non-empty canonical column IDs",
+            ));
+        }
+        if metadata
+            .unit
+            .as_deref()
+            .is_some_and(|unit| unit.trim().is_empty())
+        {
+            return Err(invalid_schema(
+                format!("columns.{column}.unit"),
+                "must be non-empty when set",
+            ));
+        }
+    }
 
     for (index, column) in profile.key.iter().enumerate() {
         if column.trim().is_empty() {
@@ -180,6 +195,26 @@ fn validate_pre_parse(profile: &Profile) -> Result<(), RefusalPayload> {
     let Some(pre_parse) = profile.pre_parse.as_ref() else {
         return Ok(());
     };
+    if pre_parse
+        .sheet
+        .as_deref()
+        .is_some_and(|sheet| sheet.trim().is_empty())
+    {
+        return Err(invalid_schema(
+            "pre_parse.sheet",
+            "must be non-empty when set",
+        ));
+    }
+    if pre_parse
+        .fingerprint_extract
+        .as_deref()
+        .is_some_and(|extract| extract.trim().is_empty())
+    {
+        return Err(invalid_schema(
+            "pre_parse.fingerprint_extract",
+            "must be non-empty when set",
+        ));
+    }
     let slice = &pre_parse.slice;
 
     if let Some(encoding) = slice.encoding.as_deref()

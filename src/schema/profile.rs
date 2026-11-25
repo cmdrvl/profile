@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -20,14 +21,97 @@ impl ProfileStatus {
 #[serde(rename_all = "lowercase")]
 pub enum ProfileFormat {
     Csv,
+    Tsv,
+    Parquet,
+    Jsonl,
+    Xlsx,
 }
 
 impl ProfileFormat {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Csv => "csv",
+            Self::Tsv => "tsv",
+            Self::Parquet => "parquet",
+            Self::Jsonl => "jsonl",
+            Self::Xlsx => "xlsx",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ColumnType {
+    Integer,
+    Number,
+    Boolean,
+    Text,
+    Date,
+    Unknown,
+}
+
+impl ColumnType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Integer => "integer",
+            Self::Number => "number",
+            Self::Boolean => "boolean",
+            Self::Text => "text",
+            Self::Date => "date",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ColumnSensitivity {
+    Public,
+    Derived,
+    Protected,
+}
+
+impl ColumnSensitivity {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Derived => "derived",
+            Self::Protected => "protected",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AirlockClass {
+    Telemetry,
+    DerivedText,
+    Forbidden,
+}
+
+impl AirlockClass {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Telemetry => "telemetry",
+            Self::DerivedText => "derived_text",
+            Self::Forbidden => "forbidden",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ColumnMetadata {
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub type_: Option<ColumnType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nullable: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensitivity: Option<ColumnSensitivity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub airlock_class: Option<AirlockClass>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -112,6 +196,9 @@ pub struct Profile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pre_parse: Option<PreParse>,
 
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub columns: BTreeMap<String, ColumnMetadata>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hashing: Option<Hashing>,
 
@@ -127,6 +214,10 @@ pub struct Profile {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PreParse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint_extract: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_shape: Option<ExpectedShape>,
     pub slice: SliceDirectives,

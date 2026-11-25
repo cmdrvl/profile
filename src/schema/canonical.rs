@@ -1,9 +1,10 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 use crate::refusal::RefusalPayload;
 use crate::schema::profile::{
-    Equivalence, Hashing, PreParse, Profile, ProfileFormat, ProfileStatus,
+    ColumnMetadata, Equivalence, Hashing, PreParse, Profile, ProfileFormat, ProfileStatus,
 };
 use crate::schema::validate::{ValidationMode, validate_profile};
 
@@ -26,6 +27,8 @@ struct CanonicalProfile<'a> {
     fingerprint_ref: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pre_parse: Option<&'a PreParse>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    columns: &'a BTreeMap<String, ColumnMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     hashing: Option<CanonicalHashing<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,6 +91,7 @@ impl<'a> From<&'a Profile> for CanonicalProfile<'a> {
             column_registry_hash: profile.column_registry_hash.as_deref(),
             fingerprint_ref: profile.fingerprint_ref.as_deref(),
             pre_parse: profile.pre_parse.as_ref(),
+            columns: &profile.columns,
             hashing: profile.hashing.as_ref().map(CanonicalHashing::from),
             equivalence: profile.equivalence.as_ref().map(CanonicalEquivalence::from),
             key: Some(profile.key.as_slice()),

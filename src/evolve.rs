@@ -56,10 +56,16 @@ pub fn run(args: &EvolveArgs, _no_witness: bool) -> Result<CommandOutput, Refusa
     let inspection_pre_parse = peek_pre_parse
         .clone()
         .or_else(|| old_profile.pre_parse.clone());
+    let inspection_sheet = args.sheet.as_deref().or_else(|| {
+        old_profile
+            .pre_parse
+            .as_ref()
+            .and_then(|pre_parse| pre_parse.sheet.as_deref())
+    });
     let headers = read_headers(
         &args.against,
         inspection_pre_parse.as_ref(),
-        args.sheet.as_deref(),
+        inspection_sheet,
     )?;
     if headers.is_empty() {
         return Err(RefusalPayload::empty_with_reason(
@@ -408,6 +414,8 @@ fn load_pre_parse_from_peek(path: &Path) -> Result<PreParse, RefusalPayload> {
                 header_rows_pattern: Vec::new(),
             });
     Ok(PreParse {
+        sheet: None,
+        fingerprint_extract: None,
         expected_shape,
         slice,
     })

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 
 use serde::Serialize;
@@ -38,6 +39,7 @@ fn build_draft_template(format: &DatasetFormat) -> Result<Profile, RefusalPayloa
         column_registry_hash: None,
         fingerprint_ref: None,
         pre_parse: None,
+        columns: BTreeMap::new(),
         hashing: None,
         equivalence: Some(Equivalence {
             order: None,
@@ -52,6 +54,10 @@ fn build_draft_template(format: &DatasetFormat) -> Result<Profile, RefusalPayloa
 fn resolve_profile_format(format: &DatasetFormat) -> Result<ProfileFormat, RefusalPayload> {
     match format {
         DatasetFormat::Csv => Ok(ProfileFormat::Csv),
+        DatasetFormat::Tsv => Ok(ProfileFormat::Tsv),
+        DatasetFormat::Parquet => Ok(ProfileFormat::Parquet),
+        DatasetFormat::Jsonl => Ok(ProfileFormat::Jsonl),
+        DatasetFormat::Xlsx => Ok(ProfileFormat::Xlsx),
     }
 }
 
@@ -62,6 +68,7 @@ fn render_yaml(profile: &Profile) -> Result<String, RefusalPayload> {
         format: profile.format,
         column_registry: profile.column_registry.as_deref(),
         pre_parse: profile.pre_parse.as_ref(),
+        columns: &profile.columns,
         equivalence: profile.equivalence.as_ref(),
         key: profile.key.as_slice(),
         include_columns: profile.include_columns.as_slice(),
@@ -88,6 +95,8 @@ struct DraftTemplate<'a> {
     column_registry: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pre_parse: Option<&'a crate::schema::PreParse>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    columns: &'a BTreeMap<String, crate::schema::ColumnMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     equivalence: Option<&'a Equivalence>,
     key: &'a [String],

@@ -122,11 +122,13 @@ Commands:
   robot-docs             Top-level paste-ready operating guide for headless agents
   doctor                 Read-only diagnostic surface for headless agents
   draft new              Create a new draft profile (blank template)
-  draft init <DATASET>   Create a draft profile from a real dataset (CSV header-driven)
+  draft init <DATASET>   Create a draft profile from a real tabular dataset
   validate <FILE>        Validate a profile against the schema
   lint <PROFILE>         Validate + check a profile against a dataset
   slice <DATASET>        Apply profile/ad-hoc pre_parse directives and canonical headers, then emit clean CSV
   emit-discovery <CSV>   Emit profile.discovery.v0 candidate template from sliced CSV
+  emit-verify-starter <PROFILE>  Emit starter verify rules from a frozen profile
+  emit-ddl <PROFILE>     Emit deterministic Postgres/Snowflake DDL from a frozen profile
   stats <DATASET>        Deterministic structural stats for a dataset
   suggest-key <DATASET>  Rank candidate key columns deterministically
   freeze <DRAFT>         Freeze a draft into an immutable profile
@@ -142,10 +144,10 @@ Commands:
 
 ```
 profile draft new --format <FORMAT> --out <FILE>
-  --format <FORMAT>      csv (v0.1); other formats deferred
+  --format <FORMAT>      csv, tsv, parquet, jsonl, or xlsx
 
 profile draft init <DATASET> --out <FILE> [--format <FORMAT>] [--key <COLUMN>] [--column-registry <PATH>] [--from-peek <JSON>]
-  --format <FORMAT>      csv (v0.1); others deferred
+  --format <FORMAT>      csv, tsv, parquet, jsonl, or xlsx
   --out <FILE>           Output path for draft profile YAML
   --key <COLUMN>         Optional: set key explicitly
   --key auto             Optional: set key to the top suggest-key candidate
@@ -163,6 +165,12 @@ profile slice <DATASET> --mode <preamble_skip|multi_row_header|preamble_with_uni
 
 profile emit-discovery <SLICED_CSV> --source-file <SOURCE_CSV> --skip-rows <N> [--source-kind <KIND>] [--json]
   (builds deterministic profile.discovery.v0 candidate output for fingerprint template promotion from a caller-selected successful slice)
+
+profile emit-verify-starter <FROZEN_PROFILE> [--stats <JSON>] [--out <JSON>] [--json]
+  (emits verify.rules.v1 constraints from frozen profile metadata and redacted stats; raw values are never copied)
+
+profile emit-ddl <FROZEN_PROFILE> [--stats <JSON>] [--dialect <postgres|snowflake>] [--table <NAME>] [--out <SQL>] [--json]
+  (emits twinning.ddl.v1 DDL from the same metadata; identifiers are quoted)
 
 profile [--explicit] stats <DATASET> [--profile <FILE>] [--json]
   (reports column counts, null rates, and key viability; deterministic ordering; example values are omitted unless --explicit is set; when a profile carries column_registry, profile columns are resolved against canonicalized headers)
@@ -230,6 +238,8 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
 | `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, canonical-header summary, source encoding, output hash, and lineage metadata; data rows omitted unless `--explicit` |
 | `emit-discovery` | Canonical discovery candidate object | Envelope with `result` containing a `profile.discovery.v0` payload |
+| `emit-verify-starter` | Frozen-profile verify projection | Envelope with `result` containing `verify.rules.v1` and no raw values |
+| `emit-ddl` | Frozen-profile DDL projection | Envelope with `result` containing `twinning.ddl.v1` and SQL |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
 | `list`, `show`, `diff` | Report (human default) | Envelope with subcommand-specific `result` |
@@ -420,11 +430,12 @@ The frozen file on disk uses canonical field order and block style, but includes
 | `profile_family` | string | frozen only | Stable name (e.g., `csv.loan_tape.core`) |
 | `profile_sha256` | string | frozen only | `"sha256:<hex>"` — lowercase hex SHA256 of canonicalized content, prefixed with `sha256:`. Excludes `profile_sha256` itself to avoid circular dependency |
 | `status` | string | yes | `"draft"` or `"frozen"` |
-| `format` | string | yes | v0.1 accepts `csv`; other formats are deferred |
+| `format` | string | yes | `csv`, `tsv`, `parquet`, `jsonl`, or `xlsx` |
 | `column_registry` | string | no | Local canon registry path used to normalize raw dataset headers to canonical column IDs before profile scoping |
 | `column_registry_hash` | string | frozen with `column_registry` only | `"blake3:<hex>"` over the length-framed semantic registry bytes. Written by `freeze`, omitted when `column_registry` is absent, and checked on frozen-profile load by `validate`, `lint`, `stats`, and `slice` |
 | `fingerprint_ref` | string | no | Optional upstream fingerprint ID used as row-shape lineage |
-| `pre_parse` | object | no | Optional CSV slicing directives used by `profile slice` and `draft init --from-peek`; `pre_parse.slice.encoding` supports strict `utf-8`, `windows-1252`, and `latin1` source decoding |
+| `pre_parse` | object | no | Optional `sheet`/`fingerprint_extract` selectors plus slicing directives used by `profile slice` and `draft init --from-peek`; `pre_parse.slice.encoding` supports strict `utf-8`, `windows-1252`, and `latin1` source decoding |
+| `columns` | map | no | Canonical column IDs to optional `type`, `nullable`, `unit`, `sensitivity`, and `airlock_class` metadata |
 | `hashing` | object | no (default on freeze) | `{ algorithm: "sha256" }` |
 | `equivalence` | object | no (default on freeze) | Normalization rules |
 | `equivalence.order` | string | no (default on freeze) | `"order-invariant"` (default) or `"order-sensitive"` |
@@ -606,7 +617,7 @@ Refusals are emitted inside the unified output envelope (see [Output Envelope](#
 
 ## Witness Record
 
-profile appends a witness record for subcommands that perform deterministic operations (freeze, lint, validate, slice, stats, suggest-key). All other subcommands — draft creation (`draft new`, `draft init`), discovery export (`emit-discovery`), read-only queries (`list`, `show`, `diff`), and network subcommands (`push`, `pull`) — do not produce witness records.
+profile appends a witness record for subcommands that perform deterministic operations (freeze, lint, validate, slice, stats, suggest-key). All other subcommands — draft creation (`draft new`, `draft init`), projections (`emit-verify-starter`, `emit-ddl`), discovery export (`emit-discovery`), read-only queries (`list`, `show`, `diff`), and network subcommands (`push`, `pull`) — do not produce witness records.
 
 The record follows the standard `witness.v0` schema:
 
@@ -688,7 +699,7 @@ Any change after freeze = new version, no exceptions.
 
 Canonicalization produces a deterministic YAML byte string for SHA256 hashing. The rules:
 
-1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `column_registry_hash`, `fingerprint_ref`, `pre_parse`, `hashing`, `equivalence`, `key`, `include_columns`. `column_registry_hash` is placed immediately after `column_registry` so registry-free profiles keep the same canonical bytes as before, while registry-backed profiles bind the locator to content bytes before downstream slicing or scoping directives.
+1. **Field order** (top-level, in this exact sequence): `schema_version`, `profile_id`, `profile_version`, `profile_family`, `status`, `format`, `column_registry`, `column_registry_hash`, `fingerprint_ref`, `pre_parse`, `columns`, `hashing`, `equivalence`, `key`, `include_columns`. Empty optional columns are omitted, so existing v0 frozen profiles retain identical canonical bytes and hashes.
 2. **Nested field order** within `hashing`: `algorithm`. Within `equivalence`: `order`, `float_decimals`, `trim_strings` (omitted fields stay omitted)
 3. **YAML style**: block style only (no flow sequences/mappings). Strings are unquoted unless they require quoting per YAML spec. Arrays use `- item` form (one item per line)
 4. **Array order**: preserve source order for `key` and `include_columns`; never sort either list
@@ -1140,6 +1151,8 @@ fn main() -> std::process::ExitCode {
     { "name": "list", "description": "List available frozen profiles" },
     { "name": "show", "description": "Show resolved profile" },
     { "name": "diff", "description": "Diff two profile versions" },
+    { "name": "emit-verify-starter", "description": "Emit starter verify rules from a frozen profile" },
+    { "name": "emit-ddl", "description": "Emit deterministic Postgres/Snowflake DDL from a frozen profile" },
     { "name": "witness", "description": "Query the witness ledger" }
   ],
 
@@ -1161,7 +1174,7 @@ fn main() -> std::process::ExitCode {
   ],
 
   "capabilities": {
-    "formats": ["csv"],
+    "formats": ["csv", "tsv", "jsonl", "parquet", "xlsx", "yaml", "json"],
     "profile_aware": false,
     "streaming": false
   },
