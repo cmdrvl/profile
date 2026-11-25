@@ -133,7 +133,7 @@ Ambient witness semantics must match spine conventions:
 ### 5. Pre-Parse Safety
 
 - `pre_parse` is explicit profile configuration, not automatic repair.
-- `profile slice` may emit raw data only as the requested CSV output or when `--explicit` is set for JSON.
+- `profile slice` emits raw data only to the file named by `--out`, or to stdout when `--explicit` is set without `--out` (human mode with neither refuses E_OUTPUT_REQUIRED; JSON mode without `--out` prints metadata only).
 - Default JSON output and witness records must omit raw data rows. Optional manifests are explicit artifacts and may contain captured preamble/unit rows.
 - Multi-row headers must be contiguous unless the plan is deliberately updated with a tested alternative.
 

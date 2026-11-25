@@ -26,6 +26,8 @@ pub enum RefusalCode {
     InputFormat,
     /// PROFILE_REDACTION_KEY is set but empty or shorter than 16 bytes
     RedactionKeyInvalid,
+    /// Human-mode `slice` without `--out` or `--explicit`: raw CSV rows never reach stdout by default
+    OutputRequired,
 }
 
 impl RefusalCode {
@@ -42,6 +44,7 @@ impl RefusalCode {
             Self::ColumnNotFound => "E_COLUMN_NOT_FOUND",
             Self::InputFormat => "E_INPUT_FORMAT",
             Self::RedactionKeyInvalid => "E_REDACTION_KEY_INVALID",
+            Self::OutputRequired => "E_OUTPUT_REQUIRED",
         }
     }
 
@@ -60,6 +63,9 @@ impl RefusalCode {
                 "Input refused by the shared tabular reader (TSV, JSONL, Parquet, XLSX)"
             }
             Self::RedactionKeyInvalid => "PROFILE_REDACTION_KEY is empty or too short",
+            Self::OutputRequired => {
+                "slice would print the CSV to stdout; pass --out <path> or --explicit"
+            }
         }
     }
 
@@ -73,7 +79,8 @@ impl RefusalCode {
             | Self::Empty
             | Self::ColumnNotFound
             | Self::InputFormat
-            | Self::RedactionKeyInvalid => "fix_input",
+            | Self::RedactionKeyInvalid
+            | Self::OutputRequired => "fix_input",
             Self::AlreadyFrozen | Self::Io => "escalate",
         }
     }

@@ -44,6 +44,11 @@ pub fn run(
     explicit: bool,
     json_output: bool,
 ) -> Result<CommandOutput, RefusalPayload> {
+    // Raw CSV rows never reach stdout by default (bd-6aj): human mode needs --out or --explicit.
+    // JSON mode without --out already prints metadata only (rows only with --explicit).
+    if !json_output && args.out.is_none() && !explicit {
+        return Err(RefusalPayload::output_required(&args.file));
+    }
     let resolved_profile = resolve_slice_profile(args)?;
     let profile = resolved_profile.as_ref().map(|resolved| &resolved.profile);
     let profile_path = resolved_profile
@@ -162,7 +167,9 @@ pub fn run(
         }
     }
 
-    if explicit || (!json_output && args.out.is_none()) {
+    // The CSV goes to stdout only when there is no --out and --explicit was given; with --out it
+    // is in the file and stdout carries the summary.
+    if explicit && args.out.is_none() {
         result["slice_csv"] =
             Value::String(String::from_utf8(csv_bytes.clone()).map_err(|error| {
                 RefusalPayload::invalid_schema_single(

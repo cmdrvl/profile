@@ -61,6 +61,15 @@ pub fn sheet_next_command(command: &Command) -> Option<String> {
     ))
 }
 
+/// The next command for a refused human-mode `slice`: write to a file, or add `--explicit` to
+/// stream the CSV. The path is shell-quoted.
+pub fn slice_output_next_command(file: &Path) -> String {
+    format!(
+        "profile slice {} --out sliced.csv   # keep your other flags; or add --explicit to stream the CSV to stdout",
+        quote_path(file)
+    )
+}
+
 /// Apply the finishing rules to a refusal raised by `command`.
 pub fn finish(command: &Command, explicit: bool, mut payload: RefusalPayload) -> RefusalPayload {
     let tabular_code = payload

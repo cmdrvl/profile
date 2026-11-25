@@ -75,7 +75,8 @@
     { "code": "E_EMPTY", "message": "Dataset missing header or data rows required for operation", "action": "fix_input" },
     { "code": "E_COLUMN_NOT_FOUND", "message": "Column not found in dataset", "action": "fix_input" },
     { "code": "E_INPUT_FORMAT", "message": "Input refused by the shared tabular reader (TSV, JSONL, Parquet, XLSX)", "action": "fix_input" },
-    { "code": "E_REDACTION_KEY_INVALID", "message": "PROFILE_REDACTION_KEY is empty or too short", "action": "fix_input" }
+    { "code": "E_REDACTION_KEY_INVALID", "message": "PROFILE_REDACTION_KEY is empty or too short", "action": "fix_input" },
+    { "code": "E_OUTPUT_REQUIRED", "message": "slice would print the CSV to stdout; pass --out <path> or --explicit", "action": "fix_input" }
   ],
 
   "formats": ["csv", "tsv", "jsonl", "parquet", "xlsx", "yaml", "json"],

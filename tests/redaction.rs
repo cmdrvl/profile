@@ -498,10 +498,12 @@ fn ambiguous_sheet_next_command_names_the_real_subcommand_and_quotes_awkward_pat
             // The quoted path round-trips: running the command in a shell succeeds.
             // Sheet 0 of this workbook has no data rows, so rerun on sheet 1: the point is that
             // the quoted path survives the shell and the real subcommand parses.
+            // Flags go before the trailing shell comment, which would otherwise swallow them.
+            let (runnable, _comment) = next.split_once("   #").unwrap_or((next.as_str(), ""));
             let rerun = run_next_command(
                 &format!(
                     "{} --json --no-witness",
-                    next.replace("--sheet 0", "--sheet 1")
+                    runnable.replace("--sheet 0", "--sheet 1")
                 ),
                 dir.path(),
             );

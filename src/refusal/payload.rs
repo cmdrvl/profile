@@ -221,6 +221,15 @@ impl RefusalPayload {
         )
     }
 
+    /// Human-mode `slice` with neither `--out` nor `--explicit`: refuse instead of printing rows.
+    pub fn output_required(file: &std::path::Path) -> Self {
+        Self::new(
+            RefusalCode::OutputRequired,
+            serde_json::json!({ "reason": "csv_to_stdout_needs_out_or_explicit" }),
+        )
+        .with_next_command(super::finish::slice_output_next_command(file))
+    }
+
     /// Create a column not found refusal
     pub fn column_not_found(columns: Vec<String>, available: Vec<String>) -> Self {
         Self::new(

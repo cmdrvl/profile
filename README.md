@@ -277,10 +277,10 @@ Apply profile-driven or ad-hoc pre-parse directives to emit clean CSV. When the 
 
 ```bash
 profile slice vendor_export.csv --profile-path vendor_profile.yaml --out clean.csv --emit-manifest slice.manifest.json
-profile slice vendor_export.csv --mode multi_row_header --header-rows 2,3 --data-starts-at 4
+profile slice vendor_export.csv --mode multi_row_header --header-rows 2,3 --data-starts-at 4 --out clean.csv
 ```
 
-Without `--out` in human mode, `slice` writes the clean CSV to stdout. Profiles without `pre_parse` use the flat CSV default: header row 1, data starts at row 2. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, source encoding, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows plus CRV1 receipt fields: `input_hash`, `profile_sha256`, `column_registry_hash`, `canonicalizer_version`, `mapping`, and `unmapped`. `pre_parse.slice.encoding` and `--encoding` support strict `utf-8`, `windows-1252`, and `latin1` input; output CSV is always UTF-8. When a profile is provided and slice flags override profile directives, `slice` emits explicit warnings.
+`slice` never prints raw CSV rows to stdout by default (bd-6aj): pass `--out <path>` to write the CSV to a file (stdout then carries only the summary, even with `--explicit`), or `--explicit` without `--out` to stream the CSV to stdout for local piping. Human mode with neither refuses with `E_OUTPUT_REQUIRED` (exit 2) and a shell-quoted `next_command`; `--json` without `--out` prints metadata only (no rows; the CSV appears as `slice_csv` only with `--explicit`). Profiles without `pre_parse` use the flat CSV default: header row 1, data starts at row 2. With `--json`, it emits the `profile.v0` envelope with row counts, columns, output hash, source encoding, and lineage metadata; raw data rows are omitted unless `--explicit` is set. The optional manifest is explicit opt-in and may contain captured preamble/unit rows plus CRV1 receipt fields: `input_hash`, `profile_sha256`, `column_registry_hash`, `canonicalizer_version`, `mapping`, and `unmapped`. `pre_parse.slice.encoding` and `--encoding` support strict `utf-8`, `windows-1252`, and `latin1` input; output CSV is always UTF-8. When a profile is provided and slice flags override profile directives, `slice` emits explicit warnings.
 
 ### `profile emit-discovery`
 

@@ -65,6 +65,8 @@ fn slice_ad_hoc_multi_row_header_can_stream_csv_to_stdout() {
         .arg("--header-merge")
         .arg("ffill_concat")
         .arg("--no-witness")
+        // bd-6aj: streaming the CSV to stdout needs --explicit (or use --out).
+        .arg("--explicit")
         .assert();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
     common::assert_success_exit!(assert);

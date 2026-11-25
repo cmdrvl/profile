@@ -240,7 +240,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 |------------|-------------|----------|
 | `doctor` | Read-only diagnostic report | Envelope with doctor result; `--robot-triage` also emits machine-readable JSON without requiring `--json` |
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
-| `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, canonical-header summary, source encoding, output hash, and lineage metadata; data rows omitted unless `--explicit` |
+| `slice` | Clean CSV to `--out`, or to stdout only with `--explicit` (human mode with neither refuses E_OUTPUT_REQUIRED); optional manifest artifact | Envelope with row counts, columns, canonical-header summary, source encoding, output hash, and lineage metadata; data rows omitted unless `--explicit` |
 | `emit-discovery` | Canonical discovery candidate object | Envelope with `result` containing a `profile.discovery.v0` payload |
 | `emit-verify-starter` | Frozen-profile verify projection | Envelope with `result` = verify portable authoring (`constraint_set_id`, `bindings`, `rules`) and no raw values |
 | `emit-ddl` | Frozen-profile DDL projection | Envelope with `result` containing `twinning.ddl.v1` and SQL |
