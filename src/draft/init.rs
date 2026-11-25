@@ -202,7 +202,7 @@ fn resolve_auto_key(
         max_arity: 1,
         sheet: args.sheet.clone(),
     };
-    let suggest_output = suggest_key::run(&suggest_args, true)?;
+    let suggest_output = suggest_key::run(&suggest_args, true, true)?;
 
     let candidate = suggest_output
         .result

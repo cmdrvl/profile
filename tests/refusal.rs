@@ -256,6 +256,7 @@ fn refusal_detail_payloads_match_plan_contract() {
     let mut column_not_found_cmd = profile_cmd();
     column_not_found_cmd
         .arg("--json")
+        .arg("--explicit")
         .arg("stats")
         .arg(fixture_path("datasets/valid/loan_tape_missing_rate.csv"))
         .arg("--profile")
@@ -278,6 +279,20 @@ fn refusal_detail_payloads_match_plan_contract() {
             .and_then(|a| a.as_array())
             .is_some_and(|available| !available.is_empty())
     );
+
+    // bd-ds5: without --explicit the dataset's header text is withheld: a count, not the list.
+    let mut redacted_cmd = profile_cmd();
+    redacted_cmd
+        .arg("--json")
+        .arg("stats")
+        .arg(fixture_path("datasets/valid/loan_tape_missing_rate.csv"))
+        .arg("--profile")
+        .arg(fixture_path("profiles/valid/draft_with_key.yaml"));
+    let redacted = refusal_envelope(&mut redacted_cmd);
+    assert_eq!(refusal_code(&redacted), Some("E_COLUMN_NOT_FOUND"));
+    let detail = redacted["result"]["detail"].clone();
+    assert!(detail.get("available").is_none(), "{detail}");
+    assert!(detail["available_count"].as_u64().is_some_and(|n| n > 0));
 }
 
 #[test]

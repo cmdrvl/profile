@@ -44,12 +44,23 @@ fn stats_is_identical_across_containers() {
 
 #[test]
 fn suggest_key_is_identical_across_containers() {
-    let (_, baseline) = run(&["suggest-key", &fx("old.csv")]);
+    // bd-ds5: names are printed only with --explicit; by default the column is an ordinal ref.
+    let (_, baseline) = run(&["--explicit", "suggest-key", &fx("old.csv")]);
     assert_eq!(baseline["result"]["candidates"][0]["column"], "loan_id");
+    let (_, default_baseline) = run(&["suggest-key", &fx("old.csv")]);
+    assert_eq!(
+        default_baseline["result"]["candidates"][0]["column"],
+        "redacted:ref:c1"
+    );
     for ext in EXTS {
-        let (code, got) = run(&["suggest-key", &fx(&format!("old.{ext}"))]);
+        let (code, got) = run(&["--explicit", "suggest-key", &fx(&format!("old.{ext}"))]);
         assert_eq!(code, Some(0), "old.{ext}");
         assert_eq!(got["result"], baseline["result"], "old.{ext}");
+        let (_, got) = run(&["suggest-key", &fx(&format!("old.{ext}"))]);
+        assert_eq!(
+            got["result"], default_baseline["result"],
+            "old.{ext} default"
+        );
     }
 }
 
@@ -184,8 +195,11 @@ fn multi_sheet_workbook_without_a_sheet_refuses_and_names_the_sheets() {
         let refusal = &got["result"];
         assert_eq!(refusal["code"], "E_INPUT_FORMAT", "{command}: {got}");
         assert_eq!(refusal["detail"]["tabular_code"], "E_AMBIGUOUS_SHEET");
+        // bd-ds5: sheet names are workbook content: a count by default, the names with --explicit.
+        assert_eq!(refusal["detail"]["context"], json!({"sheet_count": 2}));
+        let (_, explicit) = run(&["--explicit", command, &fx("new_two_sheets.xlsx")]);
         assert_eq!(
-            refusal["detail"]["context"]["sheets"],
+            explicit["result"]["detail"]["context"]["sheets"],
             json!(["notes", "loans"])
         );
     }
@@ -209,8 +223,17 @@ fn unknown_sheet_refuses_with_the_listing() {
     let (code, got) = run(&["stats", &fx("new_two_sheets.xlsx"), "--sheet", "missing"]);
     assert_eq!(code, Some(2));
     assert_eq!(got["result"]["detail"]["tabular_code"], "E_SHEET_NOT_FOUND");
+    assert_eq!(got["result"]["detail"]["context"]["sheet_count"], 2);
+    assert!(got["result"]["detail"]["context"].get("sheets").is_none());
+    let (_, explicit) = run(&[
+        "--explicit",
+        "stats",
+        &fx("new_two_sheets.xlsx"),
+        "--sheet",
+        "missing",
+    ]);
     assert_eq!(
-        got["result"]["detail"]["context"]["sheets"],
+        explicit["result"]["detail"]["context"]["sheets"],
         json!(["notes", "loans"])
     );
 }

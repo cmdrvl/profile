@@ -5,6 +5,7 @@ use serde_json::json;
 
 use crate::cli::args::StatsArgs;
 use crate::output::json::{CommandOutput, ProfileRef};
+use crate::redaction::{Kind, Marker};
 use crate::refusal::RefusalPayload;
 use crate::schema::{
     ColumnMetadata, ColumnType, ValidationMode, build_header_index, load_column_registry_aliases,
@@ -81,6 +82,29 @@ pub fn run(
         .iter()
         .map(|(name, _)| name.clone())
         .collect::<Vec<_>>();
+    // Dataset header text can be a banner or a data row: without --explicit it is an ordinal ref
+    // numbered in HEADER order (not the profile's column order) or a keyed marker. Names taken
+    // from a profile are the profile author's own words, not dataset text, and stay.
+    let mut marker = Marker::for_output(explicit)?;
+    let from_profile = args.profile.is_some();
+    let header_refs: Vec<String> = if explicit || from_profile {
+        Vec::new()
+    } else {
+        headers
+            .iter()
+            .map(|name| marker.mark(Kind::Column, name))
+            .collect()
+    };
+    let column_ids: Vec<String> = selected
+        .columns
+        .iter()
+        .map(|(name, index)| {
+            header_refs
+                .get(*index)
+                .cloned()
+                .unwrap_or_else(|| name.clone())
+        })
+        .collect();
 
     let mut accumulators = selected
         .columns
@@ -106,14 +130,15 @@ pub fn run(
 
     let columns = selected_column_names
         .iter()
+        .zip(column_ids.iter())
         .zip(accumulators.iter())
-        .map(|(name, accumulator)| {
+        .map(|((name, id), accumulator)| {
             let null_rate = accumulator.null_count as f64 / row_count as f64;
             let uniqueness = accumulator.values.len() as f64 / row_count as f64;
             let key_viable = null_rate == 0.0 && uniqueness >= KEY_VIABLE_UNIQUENESS_THRESHOLD;
 
             let mut col = json!({
-                "name": name,
+                "id": id,
                 "type": accumulator.inferred_type().as_str(),
                 "nullable": accumulator.null_count > 0,
                 "null_rate": null_rate,
@@ -121,6 +146,9 @@ pub fn run(
                 "key_viable": key_viable,
             });
 
+            if explicit || from_profile {
+                col["name"] = json!(name);
+            }
             if explicit {
                 col["example"] = json!(accumulator.example.clone().unwrap_or_default());
             }
@@ -132,6 +160,13 @@ pub fn run(
     let result = json!({
         "row_count": row_count,
         "column_count": selected_column_names.len(),
+        "redaction": if explicit {
+            "explicit"
+        } else if from_profile {
+            "profile_names"
+        } else {
+            marker.mode()
+        },
         "columns": columns
     });
 

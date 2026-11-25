@@ -17,6 +17,8 @@ encoding_rs = "0.8.35"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 serde_yaml = "0.9.34"
+# Keyed HMAC-SHA256 header markers (bd-ds5): same crates/versions as rvl and fingerprint.
+hmac = "0.12.1"
 sha2 = "0.10.8"
 ureq = { version = "2.12.1", features = ["json"] }
 

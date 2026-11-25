@@ -160,7 +160,12 @@ fn load_stats(path: Option<&Path>) -> Result<BTreeMap<String, ColumnMetadata>, R
     let mut inferred = BTreeMap::new();
     for column in columns {
         let Some(name) = column.get("name").and_then(Value::as_str) else {
-            continue;
+            // bd-ds5: default `profile stats` withholds dataset header text (columns carry an
+            // `id`, not a `name`). Silently skipping them would drop every inferred type.
+            return Err(RefusalPayload::invalid_schema_single(
+                "stats",
+                "stats JSON columns carry no names (redacted output); rerun profile stats with --profile <frozen profile> or --explicit",
+            ));
         };
         let type_ = column
             .get("type")

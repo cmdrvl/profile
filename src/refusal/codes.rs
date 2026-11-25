@@ -24,6 +24,8 @@ pub enum RefusalCode {
     ColumnNotFound,
     /// TSV / JSONL / Parquet / XLSX input refused by the shared tabular reader
     InputFormat,
+    /// PROFILE_REDACTION_KEY is set but empty or shorter than 16 bytes
+    RedactionKeyInvalid,
 }
 
 impl RefusalCode {
@@ -39,6 +41,7 @@ impl RefusalCode {
             Self::Empty => "E_EMPTY",
             Self::ColumnNotFound => "E_COLUMN_NOT_FOUND",
             Self::InputFormat => "E_INPUT_FORMAT",
+            Self::RedactionKeyInvalid => "E_REDACTION_KEY_INVALID",
         }
     }
 
@@ -56,6 +59,7 @@ impl RefusalCode {
             Self::InputFormat => {
                 "Input refused by the shared tabular reader (TSV, JSONL, Parquet, XLSX)"
             }
+            Self::RedactionKeyInvalid => "PROFILE_REDACTION_KEY is empty or too short",
         }
     }
 
@@ -68,7 +72,8 @@ impl RefusalCode {
             | Self::CsvParse
             | Self::Empty
             | Self::ColumnNotFound
-            | Self::InputFormat => "fix_input",
+            | Self::InputFormat
+            | Self::RedactionKeyInvalid => "fix_input",
             Self::AlreadyFrozen | Self::Io => "escalate",
         }
     }

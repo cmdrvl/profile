@@ -39,21 +39,12 @@ pub fn render_csv(path: &Path, sheet: Option<&str>) -> Result<Vec<u8>, RefusalPa
         }
         let context = serde_json::to_value(&refusal.context)
             .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
-        let mut payload = RefusalPayload::input_format(
+        RefusalPayload::input_format(
             shown.clone(),
             refusal.code.as_str(),
             refusal.detail,
             context,
-        );
-        if matches!(
-            refusal.code,
-            TabularCode::EAmbiguousSheet | TabularCode::ESheetNotFound
-        ) {
-            payload = payload.with_next_command(format!(
-                "profile <command> {shown} --sheet <name|index> to pick the worksheet, then rerun"
-            ));
-        }
-        payload
+        )
     };
     let render_failure = || {
         RefusalPayload::io(

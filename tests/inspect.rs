@@ -4,9 +4,14 @@ use common::{fixture_path, parse_stdout_json, profile_cmd};
 use serde_json::Value;
 
 fn run(path: &str) -> Value {
+    run_with(path, &[])
+}
+
+fn run_with(path: &str, flags: &[&str]) -> Value {
     let assert = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .args(flags)
         .arg("inspect")
         .arg(fixture_path(path))
         .assert();
@@ -23,11 +28,25 @@ fn inspect_is_zero_retention_by_default_and_contains_numeric_summary() {
     assert_eq!(output["result"]["suggestions"]["header_row"], 1);
     assert_eq!(output["result"]["suggestions"]["preamble_rows"], 0);
 
-    let columns = output["result"]["columns"].as_array().unwrap();
+    // bd-ds5: header text is never printed by default (it can be a banner or a data row): a
+    // column is an ordinal ref. --explicit adds the name, so the same stats are looked up by name.
+    let default_stdout = output.to_string();
+    assert!(!default_stdout.contains("balance") && !default_stdout.contains("loan_id"));
+    assert_eq!(output["result"]["columns"][0]["id"], "redacted:ref:c1");
+    assert!(output["result"]["columns"][0].get("name").is_none());
+    let named = run_with("datasets/valid/loan_tape_basic.csv", &["--explicit"]);
+    let columns = named["result"]["columns"].as_array().unwrap();
     let balance = columns
         .iter()
         .find(|column| column["name"] == "balance")
         .unwrap();
+    let default_balance = output["result"]["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|column| column["id"] == balance["id"])
+        .unwrap();
+    assert_eq!(default_balance["numeric"], balance["numeric"]);
     assert_eq!(balance["type"], "number");
     assert_eq!(balance["null_count"], 0);
     assert_eq!(balance["distinct_count"], 3);

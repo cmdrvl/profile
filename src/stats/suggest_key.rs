@@ -7,11 +7,15 @@ use serde_json::json;
 
 use crate::cli::args::SuggestKeyArgs;
 use crate::output::json::CommandOutput;
+use crate::redaction::{Kind, Marker};
 use crate::refusal::RefusalPayload;
 use crate::witness::append::append_for_command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyCandidate {
+    /// Header positions of `columns`; orders ties by position, never by header text.
+    #[serde(skip)]
+    pub indices: Vec<usize>,
     pub column: String,
     pub columns: Vec<String>,
     pub position: usize,
@@ -104,7 +108,12 @@ impl CandidateStats {
     }
 }
 
-pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
+pub fn run(
+    args: &SuggestKeyArgs,
+    no_witness: bool,
+    explicit: bool,
+) -> Result<CommandOutput, RefusalPayload> {
+    let mut marker = Marker::for_output(explicit)?;
     let mut reader = crate::tabular_input::open_dataset(&args.dataset, args.sheet.as_deref())?;
     let headers = reader
         .headers()
@@ -140,20 +149,36 @@ pub fn run(args: &SuggestKeyArgs, no_witness: bool) -> Result<CommandOutput, Ref
             .then(right.stability_score.cmp(&left.stability_score))
             .then(left.arity.cmp(&right.arity))
             .then(left.position.cmp(&right.position))
-            .then(left.column.cmp(&right.column))
+            .then(left.indices.cmp(&right.indices))
     });
 
     for (index, candidate) in candidates.iter_mut().enumerate() {
         candidate.rank = index + 1;
     }
 
-    let top_candidates = candidates
+    let mut top_candidates = candidates
         .into_iter()
         .take(args.top)
         .collect::<Vec<KeyCandidate>>();
 
+    // Header text can be a banner or a data row on a messy sheet: without --explicit a column
+    // is its ordinal ref (numbered in header order, never in text order) or keyed marker.
+    // The ranking above never reads the text except through `stability_score`'s name suffix
+    // test, which is a derived number.
+    if !explicit {
+        let refs = header_names
+            .iter()
+            .map(|name| marker.mark(Kind::Column, name))
+            .collect::<Vec<_>>();
+        for candidate in &mut top_candidates {
+            candidate.columns = candidate.indices.iter().map(|i| refs[*i].clone()).collect();
+            candidate.column = candidate.columns.join(" + ");
+        }
+    }
+
     let result = json!({
         "candidates": top_candidates,
+        "redaction": if explicit { "explicit" } else { marker.mode() },
         "top": args.top,
         "max_arity": args.max_arity,
         "ranking": {
@@ -287,6 +312,7 @@ fn candidate_from_stats(
     let viable = uniqueness >= AUTO_KEY_UNIQUENESS_THRESHOLD && stats.incomplete_count == 0;
 
     KeyCandidate {
+        indices: spec.to_vec(),
         column: columns.join(" + "),
         columns,
         position: spec[0],

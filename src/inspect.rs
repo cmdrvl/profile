@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::cli::args::{InspectArgs, SuggestKeyArgs};
 use crate::output::json::CommandOutput;
+use crate::redaction::{Kind, Marker};
 use crate::refusal::RefusalPayload;
 use crate::schema::ColumnType;
 
@@ -84,6 +85,7 @@ impl ColumnAccumulator {
 }
 
 pub fn run(args: &InspectArgs, explicit: bool) -> Result<CommandOutput, RefusalPayload> {
+    let mut marker = Marker::for_output(explicit)?;
     let mut reader = crate::tabular_input::open_dataset(&args.dataset, args.sheet.as_deref())?;
     let headers = reader
         .headers()
@@ -117,10 +119,12 @@ pub fn run(args: &InspectArgs, explicit: bool) -> Result<CommandOutput, RefusalP
     }
 
     let mut columns = Vec::with_capacity(headers.len());
+    // Header text can be a banner or a data row on a messy sheet: without --explicit a column
+    // is an ordinal ref (header order) or keyed marker, never the text.
     for (name, accumulator) in headers.iter().zip(&accumulators) {
         let null_rate = accumulator.null_count as f64 / row_count as f64;
         let mut column = json!({
-            "name": name,
+            "id": marker.mark(Kind::Column, name),
             "type": accumulator.inferred_type().as_str(),
             "null_count": accumulator.null_count,
             "null_rate": null_rate,
@@ -129,6 +133,7 @@ pub fn run(args: &InspectArgs, explicit: bool) -> Result<CommandOutput, RefusalP
             "numeric": accumulator.numeric_summary(),
         });
         if explicit {
+            column["name"] = json!(name);
             column["example"] = json!(accumulator.example.clone().unwrap_or_default());
         }
         columns.push(column);
@@ -142,6 +147,7 @@ pub fn run(args: &InspectArgs, explicit: bool) -> Result<CommandOutput, RefusalP
             sheet: args.sheet.clone(),
         },
         true,
+        explicit,
     )?;
     let candidates = key_output
         .result
@@ -160,6 +166,7 @@ pub fn run(args: &InspectArgs, explicit: bool) -> Result<CommandOutput, RefusalP
         "row_count": row_count,
         "column_count": headers.len(),
         "columns": columns,
+        "redaction": if explicit { "explicit" } else { marker.mode() },
         "key_candidates": candidates,
         "suggestions": {
             "header_row": 1,

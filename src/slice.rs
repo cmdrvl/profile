@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::cli::args::{HeaderMergeStrategyArg, SliceArgs, SliceModeArg};
 use crate::output::json::{CommandOutput, ProfileRef};
+use crate::redaction::{Kind, Marker};
 use crate::refusal::RefusalPayload;
 use crate::resolve::resolver::resolve_profile;
 use crate::schema::{
@@ -120,6 +121,19 @@ pub fn run(
         })?;
     }
 
+    // The header row of a messy sheet can be a banner or a data row: without --explicit a column
+    // is an ordinal ref (column order) or keyed marker, never the text. The manifest and the
+    // slice CSV are files the caller asked for and keep the real headers.
+    let mut marker = Marker::for_output(explicit)?;
+    let columns_out: Vec<String> = if explicit {
+        slice.headers.clone()
+    } else {
+        slice
+            .headers
+            .iter()
+            .map(|header| marker.mark(Kind::Column, header))
+            .collect()
+    };
     let mut result = json!({
         "input_path": args.file.display().to_string(),
         "output_path": args.out.as_ref().map(|path| path.display().to_string()),
@@ -137,7 +151,8 @@ pub fn run(
             "data_starts_at": plan.data_starts_at,
             "output_data_rows": slice.data_rows.len()
         },
-        "columns": slice.headers,
+        "columns": columns_out,
+        "redaction": if explicit { "explicit" } else { marker.mode() },
         "output_hash": output_hash
     });
     if !warnings.is_empty() {

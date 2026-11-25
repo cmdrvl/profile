@@ -205,6 +205,22 @@ impl RefusalPayload {
         )
     }
 
+    /// `PROFILE_REDACTION_KEY` is set but unusable. Carries the variable name, the reason and the
+    /// minimum only: never the key or its length.
+    pub fn redaction_key_invalid(error: crate::redaction::KeyError) -> Self {
+        Self::new(
+            RefusalCode::RedactionKeyInvalid,
+            serde_json::json!({
+                "env": crate::redaction::ENV_KEY,
+                "reason": error.reason(),
+                "min_bytes": crate::redaction::MIN_KEY_BYTES,
+            }),
+        )
+        .with_next_command(
+            "Set PROFILE_REDACTION_KEY to at least 16 bytes, or unset it to use ordinal refs",
+        )
+    }
+
     /// Create a column not found refusal
     pub fn column_not_found(columns: Vec<String>, available: Vec<String>) -> Self {
         Self::new(

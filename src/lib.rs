@@ -24,6 +24,7 @@ pub mod network;
 pub mod output;
 pub(crate) mod paths;
 pub mod projection;
+pub mod redaction;
 pub mod refusal;
 pub mod resolve;
 pub mod schema;
@@ -88,13 +89,28 @@ pub fn run() -> u8 {
         return doctor::emit_fix_unavailable();
     }
 
-    let result = dispatch(command, cli.no_witness, cli.explicit, cli.json);
+    // A set-but-unusable PROFILE_REDACTION_KEY refuses for every command that prints dataset
+    // text, whether or not --explicit is given: never a silent fallback.
+    let result = precheck_redaction_key(command)
+        .and_then(|()| dispatch(command, cli.no_witness, cli.explicit, cli.json))
+        .map_err(|payload| refusal::finish::finish(command, cli.explicit, payload));
     let subcommand = command_name(command);
 
     if cli.json {
         output::json::emit(subcommand, result)
     } else {
         output::human::emit(subcommand, result)
+    }
+}
+
+fn precheck_redaction_key(command: &Command) -> Result<(), RefusalPayload> {
+    match command {
+        Command::Slice(_) | Command::Stats(_) | Command::Inspect(_) | Command::SuggestKey(_) => {
+            redaction::RedactionKey::from_env()
+                .map(|_| ())
+                .map_err(RefusalPayload::redaction_key_invalid)
+        }
+        _ => Ok(()),
     }
 }
 
@@ -122,7 +138,7 @@ fn dispatch(
         Command::Slice(args) => slice::run(args, no_witness, explicit, json_output),
         Command::Stats(args) => stats::stats::run(args, no_witness, explicit),
         Command::Inspect(args) => inspect::run(args, explicit),
-        Command::SuggestKey(args) => stats::suggest_key::run(args, no_witness),
+        Command::SuggestKey(args) => stats::suggest_key::run(args, no_witness, explicit),
         Command::Freeze(args) => freeze::freeze::run(args, no_witness),
         Command::List(args) => resolve::list::run(args, no_witness).map(CommandOutput::success),
         Command::Show(args) => resolve::show::run(args, no_witness),

@@ -7,6 +7,7 @@ fn suggest_key_json_is_deterministic_and_applies_position_tiebreak() {
     let assert_one = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .arg("suggest-key")
         .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
         .assert();
@@ -16,6 +17,7 @@ fn suggest_key_json_is_deterministic_and_applies_position_tiebreak() {
     let assert_two = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .arg("suggest-key")
         .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
         .assert();
@@ -137,6 +139,7 @@ fn suggest_key_discovers_minimal_composite_key_when_singles_are_not_unique() {
     let assert = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .arg("suggest-key")
         .arg(dataset)
         .assert();

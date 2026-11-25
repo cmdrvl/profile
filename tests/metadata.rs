@@ -111,9 +111,24 @@ fn metadata_validation_rejects_blank_units_and_unknown_sensitivity() {
 fn stats_and_draft_init_infer_metadata_without_retaining_values() {
     let workspace = temp_workspace();
     let dataset = fixture_path("datasets/valid/loan_tape_basic.csv");
+    // bd-ds5: default stats withholds header text (an ordinal ref `id`); --explicit names it.
+    let redacted = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("stats")
+        .arg(&dataset)
+        .assert();
+    let redacted_json = parse_stdout_json(&redacted);
+    common::assert_success_exit!(redacted);
+    assert_eq!(
+        redacted_json["result"]["columns"][0]["id"],
+        "redacted:ref:c1"
+    );
+    assert!(!redacted_json.to_string().contains("loan_id"));
     let stats = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .arg("stats")
         .arg(&dataset)
         .assert();
@@ -128,7 +143,8 @@ fn stats_and_draft_init_infer_metadata_without_retaining_values() {
     assert_eq!(loan_id["type"], "text");
     assert_eq!(loan_id["nullable"], false);
     assert!(stats_json.to_string().contains("\"type\""));
-    assert!(!stats_json.to_string().contains("LN-0001"));
+    // Values stay out of the default output (--explicit adds an example, so check the default run).
+    assert!(!redacted_json.to_string().contains("LN-0001"));
 
     let draft = workspace.path().join("draft.yaml");
     profile_cmd()
@@ -151,6 +167,7 @@ fn frozen_profile_projections_use_stats_and_never_emit_raw_values() {
     let stats = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .arg("stats")
         .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
         .assert();
@@ -195,4 +212,38 @@ fn frozen_profile_projections_use_stats_and_never_emit_raw_values() {
             .contains("CREATE TABLE \"loan_tape\"")
     );
     assert!(!ddl_json.to_string().contains("LN-0001"));
+}
+
+#[test]
+fn projections_refuse_default_redacted_stats_instead_of_silently_dropping_types() {
+    // bd-ds5: default `profile stats` carries column `id`s, not names. Feeding that file to a
+    // projection used to skip every column silently; it now refuses and says how to fix it.
+    let workspace = temp_workspace();
+    let stats_path = workspace.path().join("stats.json");
+    let stats = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("stats")
+        .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
+        .assert();
+    let stats_stdout = stats.get_output().stdout.clone();
+    common::assert_success_exit!(stats);
+    fs::write(&stats_path, stats_stdout).unwrap();
+    for command in ["emit-verify-starter", "emit-ddl"] {
+        let mut cmd = profile_cmd();
+        cmd.arg("--json")
+            .arg("--no-witness")
+            .arg(command)
+            .arg(fixture_path("profiles/valid/frozen_complete.yaml"))
+            .arg("--stats")
+            .arg(&stats_path);
+        if command == "emit-ddl" {
+            cmd.args(["--dialect", "snowflake", "--table", "loan_tape"]);
+        }
+        let assert = cmd.assert();
+        let json = parse_stdout_json(&assert);
+        common::assert_refusal_exit!(assert);
+        assert_eq!(json["result"]["code"], "E_INVALID_SCHEMA", "{command}");
+        assert!(json.to_string().contains("--explicit"), "{command}: {json}");
+    }
 }

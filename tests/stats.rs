@@ -12,6 +12,7 @@ fn stats_json_is_deterministic_for_full_dataset() {
     let assert_one = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .arg("stats")
         .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
         .assert();
@@ -21,6 +22,7 @@ fn stats_json_is_deterministic_for_full_dataset() {
     let assert_two = profile_cmd()
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .arg("stats")
         .arg(fixture_path("datasets/valid/loan_tape_basic.csv"))
         .assert();

@@ -479,6 +479,7 @@ fn slice_registry_only_profile_materializes_canonical_headers_and_manifest_linea
         .arg(&manifest)
         .arg("--json")
         .arg("--no-witness")
+        .arg("--explicit")
         .assert();
     let envelope = parse_stdout_json(&assert);
     common::assert_success_exit!(assert);

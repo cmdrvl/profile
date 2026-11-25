@@ -555,6 +555,15 @@ fn v1_health_findings() -> Vec<Value> {
     let epoch_ok = std::env::var("SOURCE_DATE_EPOCH")
         .ok()
         .is_none_or(|value| value.parse::<i64>().is_ok());
+    // Reports only whether a usable key is configured: never its value or length.
+    let (redaction_severity, redaction_message) = match crate::redaction::RedactionKey::from_env() {
+        Ok(Some(_)) => ("info", "redaction key: configured (keyed markers)"),
+        Ok(None) => ("info", "redaction key: not configured (ordinal refs)"),
+        Err(_) => (
+            "error",
+            "redaction key: set but unusable, so slice, inspect, stats and suggest-key refuse (E_REDACTION_KEY_INVALID)",
+        ),
+    };
     vec![
         json!({
             "id": "profile.operator_manifest",
@@ -567,6 +576,11 @@ fn v1_health_findings() -> Vec<Value> {
             "fix": if manifest_ok { Value::Null } else {
                 json!("inspect profile --describe")
             }
+        }),
+        json!({
+            "id": "profile.redaction_key",
+            "severity": redaction_severity,
+            "message": redaction_message,
         }),
         json!({
             "id": "profile.doctor_read_only",
