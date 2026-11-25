@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, ColorChoice, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "profile",
     about = "Create, validate, and freeze column-scoping profiles",
     disable_help_subcommand = true,
+    color = ColorChoice::Never,
     version
 )]
 pub struct Cli {
@@ -96,11 +97,20 @@ pub enum DoctorCommand {
     Health,
     /// Report the supported doctor contract and domain boundaries
     Capabilities,
+    /// Report machine-readable next actions after health checks
+    Triage(DoctorTriageArgs),
     /// Print concise usage guidance for headless agents
     RobotDocs,
     /// Refuse safely; repair mode is not available in this release
     #[command(hide = true)]
     Fix,
+}
+
+#[derive(Debug, Clone, Args, Default)]
+pub struct DoctorTriageArgs {
+    /// Emit the canonical JSON doctor report
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Clone, Args, Default)]
@@ -141,7 +151,7 @@ pub struct DraftNewArgs {
     pub format: DatasetFormat,
 
     /// Output path for the draft profile YAML
-    #[arg(long)]
+    #[arg(long, visible_alias = "output")]
     pub out: PathBuf,
 }
 
@@ -151,7 +161,7 @@ pub struct DraftInitArgs {
     pub dataset: PathBuf,
 
     /// Output path for the draft profile YAML
-    #[arg(long)]
+    #[arg(long, visible_alias = "output")]
     pub out: PathBuf,
 
     /// Dataset format
@@ -241,7 +251,7 @@ pub struct SliceArgs {
     pub encoding: Option<String>,
 
     /// Output CSV path. If omitted in human mode, clean CSV is written to stdout.
-    #[arg(long)]
+    #[arg(long, visible_alias = "output")]
     pub out: Option<PathBuf>,
 
     /// Optional JSON manifest path for preamble, units, and lineage metadata
@@ -299,7 +309,7 @@ pub struct FreezeArgs {
     pub version: u64,
 
     /// Output path for the frozen profile YAML
-    #[arg(long)]
+    #[arg(long, visible_alias = "output")]
     pub out: PathBuf,
 }
 
@@ -350,7 +360,7 @@ pub struct PullArgs {
     pub profile_id: String,
 
     /// Output path for the downloaded profile
-    #[arg(long)]
+    #[arg(long, visible_alias = "output")]
     pub out: PathBuf,
 }
 

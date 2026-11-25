@@ -1,6 +1,6 @@
 mod common;
 
-use common::{assert_json_envelope_shape, parse_stdout_json, profile_cmd, temp_workspace};
+use common::{parse_stdout_json, profile_cmd, temp_workspace};
 
 #[test]
 fn top_level_robot_triage_is_machine_readable_without_global_json() {
@@ -9,78 +9,52 @@ fn top_level_robot_triage_is_machine_readable_without_global_json() {
     common::assert_success_exit!(assert);
 
     assert_eq!(
-        result.get("schema").and_then(|entry| entry.as_str()),
-        Some("profile.doctor.triage.v1")
-    );
-    assert_eq!(
-        result.get("status").and_then(|entry| entry.as_str()),
-        Some("healthy")
-    );
-    assert_eq!(
         result
-            .get("recommended_actions")
-            .and_then(|entry| entry.as_array())
-            .and_then(|entries| entries.first())
-            .and_then(|entry| entry.get("action"))
+            .get("schema_version")
             .and_then(|entry| entry.as_str()),
-        Some("profile capabilities --json")
+        Some("cmdrvl.doctor.v1")
+    );
+    assert_eq!(
+        result.get("mode").and_then(|entry| entry.as_str()),
+        Some("triage")
+    );
+    assert_eq!(
+        result.get("healthy").and_then(|entry| entry.as_bool()),
+        Some(true)
+    );
+    assert!(
+        result
+            .get("next_actions")
+            .and_then(|entry| entry.as_array())
+            .is_some()
     );
 }
 
 #[test]
 fn top_level_capabilities_json_lists_agent_surfaces() {
     let assert = profile_cmd().arg("capabilities").arg("--json").assert();
-    let envelope = parse_stdout_json(&assert);
+    let capabilities = parse_stdout_json(&assert);
     common::assert_success_exit!(assert);
-    assert_json_envelope_shape(&envelope);
+    assert_eq!(
+        capabilities
+            .get("schema_version")
+            .and_then(|entry| entry.as_str()),
+        Some("operator.v1")
+    );
+    assert_eq!(
+        capabilities.get("name").and_then(|entry| entry.as_str()),
+        Some("profile")
+    );
+    assert!(
+        capabilities
+            .get("commands")
+            .and_then(|entry| entry.as_array())
+            .is_some()
+    );
 
-    assert_eq!(
-        envelope.get("subcommand").and_then(|entry| entry.as_str()),
-        Some("capabilities")
-    );
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("agent_surfaces"))
-            .and_then(|surfaces| surfaces.get("robot_triage"))
-            .and_then(|surface| surface.get("command"))
-            .and_then(|entry| entry.as_str()),
-        Some("profile --robot-triage")
-    );
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("agent_surfaces"))
-            .and_then(|surfaces| surfaces.get("capabilities"))
-            .and_then(|surface| surface.get("command"))
-            .and_then(|entry| entry.as_str()),
-        Some("profile capabilities --json")
-    );
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("fix_mode"))
-            .and_then(|fix_mode| fix_mode.get("command"))
-            .and_then(|entry| entry.as_str()),
-        Some("profile doctor --fix")
-    );
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("composition"))
-            .and_then(|composition| composition.get("family"))
-            .and_then(|family| family.get("name"))
-            .and_then(|entry| entry.as_str()),
-        Some("cmdrvl-spine")
-    );
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("composition"))
-            .and_then(|composition| composition.get("role"))
-            .and_then(|entry| entry.as_str()),
-        Some("column-scope authoring and freezing before shape/rvl report tools")
-    );
+    let described = profile_cmd().arg("--describe").assert();
+    let described = parse_stdout_json(&described);
+    assert_eq!(capabilities, described);
 }
 
 #[test]
@@ -101,6 +75,34 @@ fn top_level_robot_docs_guide_prints_plain_guidance() {
 }
 
 #[test]
+fn help_is_ansi_free_with_no_color_and_non_tty_environment() {
+    let assert = profile_cmd()
+        .env("NO_COLOR", "1")
+        .env("TERM", "dumb")
+        .arg("--help")
+        .assert();
+    let stdout_ansi_free = !assert.get_output().stdout.contains(&0x1b);
+    let stderr_ansi_free = !assert.get_output().stderr.contains(&0x1b);
+    common::assert_success_exit!(assert);
+    assert!(stdout_ansi_free);
+    assert!(stderr_ansi_free);
+}
+
+#[test]
+fn output_alias_is_accepted_for_profile_artifacts() {
+    let workspace = temp_workspace();
+    let output = workspace.path().join("draft.yaml");
+    let assert = profile_cmd()
+        .arg("draft")
+        .arg("new")
+        .arg("--output")
+        .arg(&output)
+        .assert();
+    common::assert_success_exit!(assert);
+    assert!(output.exists());
+}
+
+#[test]
 fn doctor_health_json_reports_read_only_contract() {
     let assert = profile_cmd()
         .arg("doctor")
@@ -108,44 +110,38 @@ fn doctor_health_json_reports_read_only_contract() {
         .arg("--json")
         .assert();
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
-    let envelope = parse_stdout_json(&assert);
+    let report = parse_stdout_json(&assert);
     common::assert_success_exit!(assert);
 
     assert_eq!(stderr, "");
-    assert_json_envelope_shape(&envelope);
     assert_eq!(
-        envelope.get("subcommand").and_then(|entry| entry.as_str()),
-        Some("doctor health")
-    );
-    assert_eq!(
-        envelope.get("outcome").and_then(|entry| entry.as_str()),
-        Some("SUCCESS")
-    );
-
-    let result = envelope.get("result").expect("result should be present");
-    assert_eq!(
-        result.get("contract").and_then(|entry| entry.as_str()),
-        Some("cmdrvl.read_only_doctor.v1")
-    );
-    assert_eq!(
-        result
-            .get("tool")
-            .and_then(|tool| tool.get("version"))
+        report
+            .get("schema_version")
             .and_then(|entry| entry.as_str()),
+        Some("cmdrvl.doctor.v1")
+    );
+    assert_eq!(
+        report.get("mode").and_then(|entry| entry.as_str()),
+        Some("health")
+    );
+    assert_eq!(
+        report.get("tool").and_then(|entry| entry.as_str()),
+        Some("profile")
+    );
+    assert_eq!(
+        report.get("tool_version").and_then(|entry| entry.as_str()),
         Some(env!("CARGO_PKG_VERSION"))
     );
-
-    let side_effects = result
-        .get("side_effects")
-        .and_then(|entry| entry.as_object())
-        .expect("side effects should be an object");
-    for (key, value) in side_effects {
-        assert_eq!(
-            value.as_bool(),
-            Some(false),
-            "expected side effect {key} to be false"
-        );
-    }
+    assert_eq!(
+        report.get("healthy").and_then(|entry| entry.as_bool()),
+        Some(true)
+    );
+    assert!(
+        report
+            .get("findings")
+            .and_then(|entry| entry.as_array())
+            .is_some()
+    );
 }
 
 #[test]
@@ -155,79 +151,30 @@ fn doctor_capabilities_json_lists_agent_surface() {
         .arg("capabilities")
         .arg("--json")
         .assert();
-    let envelope = parse_stdout_json(&assert);
+    let report = parse_stdout_json(&assert);
     common::assert_success_exit!(assert);
-    assert_json_envelope_shape(&envelope);
-
     assert_eq!(
-        envelope.get("subcommand").and_then(|entry| entry.as_str()),
-        Some("doctor capabilities")
-    );
-
-    let commands = envelope
-        .get("result")
-        .and_then(|result| result.get("commands"))
-        .and_then(|entry| entry.as_array())
-        .expect("capabilities should list commands");
-    let names = commands
-        .iter()
-        .filter_map(|command| command.get("name").and_then(|entry| entry.as_str()))
-        .collect::<Vec<_>>();
-
-    assert!(names.contains(&"profile --robot-triage"));
-    assert!(names.contains(&"profile capabilities --json"));
-    assert!(names.contains(&"profile robot-docs guide"));
-    assert!(names.contains(&"profile doctor health --json"));
-    assert!(names.contains(&"profile doctor capabilities --json"));
-    assert!(names.contains(&"profile doctor robot-docs"));
-    assert!(names.contains(&"profile doctor --robot-triage"));
-    assert!(names.contains(&"profile doctor --fix"));
-
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("fix_mode"))
-            .and_then(|fix_mode| fix_mode.get("available"))
-            .and_then(|entry| entry.as_bool()),
-        Some(false)
-    );
-
-    let detector_ids = envelope
-        .get("result")
-        .and_then(|result| result.get("detectors"))
-        .and_then(|entry| entry.as_array())
-        .expect("capabilities should list detector contracts")
-        .iter()
-        .filter_map(|detector| detector.get("id").and_then(|entry| entry.as_str()))
-        .collect::<Vec<_>>();
-    for expected in [
-        "invalid_profile_schema",
-        "dataset_column_mismatch",
-        "already_frozen_profile",
-        "witness_append_warning",
-        "remote_push_transport_failure",
-        "remote_pull_transport_failure",
-    ] {
-        assert!(detector_ids.contains(&expected));
-    }
-
-    assert_eq!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("composition"))
-            .and_then(|composition| composition.get("canonical_chain"))
-            .and_then(|chain| chain.get(0))
+        report
+            .get("schema_version")
             .and_then(|entry| entry.as_str()),
-        Some("fingerprint peek tape.csv --json --suggest > tape.peek.json")
+        Some("cmdrvl.doctor.v1")
     );
-    assert!(
-        envelope
-            .get("result")
-            .and_then(|result| result.get("composition"))
-            .and_then(|composition| composition.get("canonical_chain"))
-            .and_then(|chain| chain.get(4))
-            .and_then(|entry| entry.as_str())
-            .is_some_and(|command| command.contains("rvl old.csv new.csv --profile"))
+    assert_eq!(
+        report.get("mode").and_then(|entry| entry.as_str()),
+        Some("capabilities")
+    );
+    let contract = report
+        .get("contract")
+        .expect("capabilities report should embed contract");
+    assert_eq!(
+        contract
+            .get("schema_version")
+            .and_then(|entry| entry.as_str()),
+        Some("operator.v1")
+    );
+    assert_eq!(
+        contract.get("name").and_then(|entry| entry.as_str()),
+        Some("profile")
     );
 }
 
@@ -238,18 +185,20 @@ fn doctor_robot_triage_is_machine_readable_without_global_json() {
     common::assert_success_exit!(assert);
 
     assert_eq!(
-        result.get("schema").and_then(|entry| entry.as_str()),
-        Some("profile.doctor.triage.v1")
+        result
+            .get("schema_version")
+            .and_then(|entry| entry.as_str()),
+        Some("cmdrvl.doctor.v1")
     );
     assert_eq!(
-        result.get("status").and_then(|entry| entry.as_str()),
-        Some("healthy")
+        result.get("mode").and_then(|entry| entry.as_str()),
+        Some("triage")
     );
     assert!(
         result
-            .get("known_failure_modes")
+            .get("next_actions")
             .and_then(|entry| entry.as_array())
-            .is_some_and(|entries| entries.len() >= 3)
+            .is_some()
     );
 }
 

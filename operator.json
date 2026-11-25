@@ -1,7 +1,8 @@
 {
-  "schema_version": "operator.v0",
+  "schema_version": "operator.v1",
   "name": "profile",
   "version": "0.10.0",
+  "contract_version": "1.0.0",
   "description": "Creates, validates, and freezes column-scoping profiles for report tools",
   "repository": "https://github.com/cmdrvl/profile",
   "license": "MIT",
@@ -18,15 +19,18 @@
   "arguments": [],
 
   "options": [
+    { "name": "json", "flag": "--json", "type": "boolean", "description": "Emit machine-readable output" },
+    { "name": "robot-triage", "flag": "--robot-triage", "type": "boolean", "description": "Legacy one-call machine triage" },
     {
       "name": "explicit",
       "flag": "--explicit",
       "type": "flag",
       "description": "Show raw data values in output (default: redacted for zero-retention safety)"
-    }
+    },
+    { "name": "out", "flag": "--out", "aliases": ["--output"], "type": "path", "description": "Canonical output path flag used by profile-producing commands" }
   ],
 
-  "subcommands": [
+  "commands": [
     { "name": "doctor", "description": "Read-only diagnostic surface for headless agents" },
     { "name": "capabilities", "description": "Top-level machine-readable capability contract for headless agents" },
     { "name": "robot-docs", "description": "Top-level paste-ready operating guide for headless agents" },
@@ -63,6 +67,25 @@
     { "code": "E_EMPTY", "message": "Dataset missing header or data rows required for operation", "action": "fix_input" },
     { "code": "E_COLUMN_NOT_FOUND", "message": "Column not found in dataset", "action": "fix_input" }
   ],
+
+  "formats": ["csv", "yaml", "json"],
+
+  "env_vars": [
+    { "name": "HOME", "description": "Base directory for profile configuration and state" },
+    { "name": "EPISTEMIC_WITNESS", "description": "Optional witness ledger path override" },
+    { "name": "EPISTEMIC_FABRIC_URL", "description": "Optional data-fabric endpoint" },
+    { "name": "NO_COLOR", "description": "Disable terminal color" },
+    { "name": "TERM", "description": "Terminal capability hint" },
+    { "name": "SOURCE_DATE_EPOCH", "description": "Unix timestamp for reproducible witness records" }
+  ],
+
+  "side_effects": {
+    "reads_files": true,
+    "writes_files": true,
+    "network": true,
+    "writes_witness": true,
+    "notes": "doctor, capabilities, and robot-docs are read-only; profile operations write only requested artifacts, witness records, or configured network endpoints"
+  },
 
   "capabilities": {
     "formats": ["csv"],

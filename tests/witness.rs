@@ -6,6 +6,30 @@ use common::{assert_json_envelope_shape, parse_stdout_json, profile_cmd, temp_wo
 use serde_json::json;
 
 #[test]
+fn source_date_epoch_makes_witness_timestamp_reproducible() {
+    let workspace = temp_workspace();
+    let home = workspace.path().join("home");
+    let ledger = workspace.path().join("state").join("witness.jsonl");
+    let dataset = workspace.path().join("dataset.csv");
+    fs::write(&dataset, "loan_id,balance\nL1,100\n").expect("dataset should be written");
+
+    let assert = profile_cmd()
+        .env("HOME", &home)
+        .env("EPISTEMIC_WITNESS", &ledger)
+        .env("SOURCE_DATE_EPOCH", "1700000000")
+        .arg("stats")
+        .arg(&dataset)
+        .assert();
+    common::assert_success_exit!(assert);
+
+    let record = read_ledger_record(&ledger, 0);
+    assert_eq!(
+        record.get("ts").and_then(|value| value.as_str()),
+        Some("2023-11-14T22:13:20Z")
+    );
+}
+
+#[test]
 fn witness_append_policy_respects_subcommand_and_no_witness_flag() {
     let workspace = temp_workspace();
     let home = workspace.path();

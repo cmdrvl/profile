@@ -19,6 +19,7 @@ pub fn run(args: &DoctorArgs) -> Result<Value, RefusalPayload> {
     match args.command.as_ref().unwrap_or(&DoctorCommand::Health) {
         DoctorCommand::Health => Ok(health_report()),
         DoctorCommand::Capabilities => Ok(capabilities_report()),
+        DoctorCommand::Triage(_) => Ok(triage_report()),
         DoctorCommand::RobotDocs => Ok(robot_docs()),
         DoctorCommand::Fix => Err(fix_unavailable_refusal()),
     }
@@ -432,3 +433,267 @@ Composition:
 Do not use profile doctor as a replacement for validation or linting. Once explicit paths are known, use profile validate <FILE> --json --no-witness or profile lint <PROFILE> --against <DATASET> --json --no-witness.
 
 profile doctor --fix is unavailable and exits 2 without stdout. Profile repair must remain manual until each fixer has detector, backup, inverse, and fixture coverage."#;
+
+// The v1 surfaces below are the canonical machine-facing contract. The older
+// report helpers above remain available to the existing human-oriented docs
+// command while callers migrate to these direct JSON reports.
+const DOCTOR_SCHEMA_VERSION: &str = "cmdrvl.doctor.v1";
+const OPERATOR_MANIFEST: &str = include_str!("../operator.json");
+
+pub fn handle_command(args: Option<&DoctorArgs>, top_level_triage: bool, json_output: bool) -> u8 {
+    if top_level_triage {
+        return emit_triage(true);
+    }
+
+    let Some(args) = args else {
+        return emit_health(json_output);
+    };
+    if args.fix {
+        return emit_fix_unavailable();
+    }
+    if args.robot_triage {
+        return emit_triage(true);
+    }
+
+    match args.command.as_ref() {
+        Some(DoctorCommand::Capabilities) => emit_doctor_capabilities(json_output),
+        Some(DoctorCommand::Triage(triage)) => emit_triage(json_output || triage.json),
+        Some(DoctorCommand::RobotDocs) => {
+            println!("{ROBOT_DOCS_V1}");
+            0
+        }
+        Some(DoctorCommand::Fix) => emit_fix_unavailable(),
+        Some(DoctorCommand::Health) | None => emit_health(json_output),
+    }
+}
+
+pub fn emit_capabilities(json_output: bool) -> u8 {
+    if json_output {
+        print_operator_json_v1();
+    } else {
+        println!("profile capabilities");
+        println!("operator contract: profile --describe");
+        println!("doctor: profile doctor --json");
+        println!("triage: profile doctor triage --json");
+        println!("robot docs: profile robot-docs guide");
+    }
+    0
+}
+
+pub fn emit_operator_json() -> u8 {
+    print_operator_json_v1();
+    0
+}
+
+fn emit_health(json_output: bool) -> u8 {
+    let report = v1_doctor_report("health");
+    if json_output {
+        print_json_v1(&report);
+    } else {
+        print_health_text_v1(&report);
+    }
+    v1_doctor_exit_code(&report)
+}
+
+fn emit_doctor_capabilities(json_output: bool) -> u8 {
+    let report = v1_doctor_report("capabilities");
+    if json_output {
+        print_json_v1(&report);
+    } else {
+        println!("profile doctor capabilities");
+        println!("contract: profile capabilities --json");
+        println!("healthy: {}", report["healthy"]);
+    }
+    v1_doctor_exit_code(&report)
+}
+
+fn emit_triage(json_output: bool) -> u8 {
+    let report = v1_doctor_report("triage");
+    if json_output {
+        print_json_v1(&report);
+    } else {
+        print_health_text_v1(&report);
+        println!("next: profile capabilities --json");
+    }
+    v1_doctor_exit_code(&report)
+}
+
+fn v1_doctor_report(mode: &str) -> Value {
+    let findings = v1_health_findings();
+    let healthy = !findings
+        .iter()
+        .any(|finding| finding.get("severity").and_then(Value::as_str) == Some("error"));
+    let mut report = json!({
+        "schema_version": DOCTOR_SCHEMA_VERSION,
+        "mode": mode,
+        "tool": "profile",
+        "tool_version": env!("CARGO_PKG_VERSION"),
+        "healthy": healthy,
+        "findings": findings,
+    });
+
+    match mode {
+        "health" => {}
+        "capabilities" => report["contract"] = v1_operator_contract(),
+        "triage" => {
+            report["next_actions"] = if healthy {
+                json!(["profile capabilities --json", "profile robot-docs guide"])
+            } else {
+                json!([
+                    "profile doctor --json",
+                    "profile doctor capabilities --json"
+                ])
+            };
+        }
+        _ => unreachable!("doctor mode is fixed by the caller"),
+    }
+    report
+}
+
+fn v1_health_findings() -> Vec<Value> {
+    let manifest_ok = v1_operator_manifest_is_valid();
+    let epoch_ok = std::env::var("SOURCE_DATE_EPOCH")
+        .ok()
+        .is_none_or(|value| value.parse::<i64>().is_ok());
+    vec![
+        json!({
+            "id": "profile.operator_manifest",
+            "severity": if manifest_ok { "info" } else { "error" },
+            "message": if manifest_ok {
+                "operator.v1 manifest is valid and exposes capabilities, robot-docs, and doctor"
+            } else {
+                "operator.v1 manifest is invalid"
+            },
+            "fix": if manifest_ok { Value::Null } else {
+                json!("inspect profile --describe")
+            }
+        }),
+        json!({
+            "id": "profile.doctor_read_only",
+            "severity": "info",
+            "message": "doctor returns before profile, dataset, registry, witness, or network handlers"
+        }),
+        json!({
+            "id": "profile.source_date_epoch",
+            "severity": if epoch_ok { "info" } else { "warning" },
+            "message": if epoch_ok {
+                "witness timestamps honor SOURCE_DATE_EPOCH when it is a valid Unix timestamp"
+            } else {
+                "SOURCE_DATE_EPOCH is not an integer Unix timestamp"
+            },
+            "fix": if epoch_ok { Value::Null } else {
+                json!("set SOURCE_DATE_EPOCH to an integer Unix timestamp")
+            }
+        }),
+    ]
+    .into_iter()
+    .map(|mut finding| {
+        if finding["fix"].is_null() {
+            finding
+                .as_object_mut()
+                .expect("finding is an object")
+                .remove("fix");
+        }
+        finding
+    })
+    .collect()
+}
+
+fn v1_operator_contract() -> Value {
+    serde_json::from_str(OPERATOR_MANIFEST).expect("operator.json must be valid JSON")
+}
+
+fn v1_operator_manifest_is_valid() -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(OPERATOR_MANIFEST) else {
+        return false;
+    };
+    let commands_ok = ["capabilities", "robot-docs", "doctor"]
+        .into_iter()
+        .all(|expected| {
+            value
+                .get("commands")
+                .and_then(Value::as_array)
+                .is_some_and(|commands| {
+                    commands.iter().any(|command| {
+                        command.get("name").and_then(Value::as_str) == Some(expected)
+                    })
+                })
+        });
+    value.get("schema_version").and_then(Value::as_str) == Some("operator.v1")
+        && value.get("name").and_then(Value::as_str) == Some("profile")
+        && value
+            .get("version")
+            .or_else(|| value.get("tool_version"))
+            .and_then(Value::as_str)
+            == Some(env!("CARGO_PKG_VERSION"))
+        && value.get("contract_version").and_then(Value::as_str) == Some("1.0.0")
+        && commands_ok
+}
+
+fn v1_doctor_exit_code(report: &Value) -> u8 {
+    if report["healthy"].as_bool() == Some(true) {
+        0
+    } else {
+        1
+    }
+}
+
+fn print_operator_json_v1() {
+    print!("{OPERATOR_MANIFEST}");
+    if !OPERATOR_MANIFEST.ends_with('\n') {
+        println!();
+    }
+}
+
+fn print_json_v1(value: &Value) {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
+    );
+}
+
+fn print_health_text_v1(report: &Value) {
+    let healthy = report["healthy"].as_bool().unwrap_or(false);
+    println!(
+        "profile doctor: {}",
+        if healthy { "healthy" } else { "unhealthy" }
+    );
+    if let Some(findings) = report.get("findings").and_then(Value::as_array) {
+        for finding in findings {
+            println!(
+                "- {}: {}",
+                finding["id"].as_str().unwrap_or("unknown"),
+                finding["message"].as_str().unwrap_or("unknown")
+            );
+        }
+    }
+}
+
+const ROBOT_DOCS_V1: &str = r#"profile robot-docs guide
+
+Discovery:
+- profile --robot-triage
+- profile capabilities --json
+- profile robot-docs guide
+- profile doctor --json
+- profile doctor health --json (legacy alias)
+- profile doctor capabilities --json
+- profile doctor triage --json
+- profile doctor --robot-triage (legacy alias)
+
+Flags:
+- Use --out as the canonical output flag. --output remains a compatibility alias.
+- Use --json for machine-readable reports.
+- Set NO_COLOR, TERM=dumb, or use a non-TTY to keep output ANSI-free.
+- Set SOURCE_DATE_EPOCH to an integer Unix timestamp for reproducible witness timestamps.
+
+The doctor is read-only. It does not read profile files, datasets, registries, stdin, or witness ledgers, and it does not write profile YAML, witness records, or remote data.
+
+Composition:
+- fingerprint peek tape.csv --json --suggest > tape.peek.json
+- profile draft init tape.csv --from-peek tape.peek.json --out loan_tape.draft.yaml
+- profile freeze loan_tape.draft.yaml --family csv.loan_tape.core --version 0 --out profiles/csv.loan_tape.core.v0.yaml
+- shape old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json > evidence/shape.report.json
+- rvl old.csv new.csv --profile profiles/csv.loan_tape.core.v0.yaml --json > evidence/rvl.report.json
+
+profile doctor --fix is unavailable and exits 2."#;

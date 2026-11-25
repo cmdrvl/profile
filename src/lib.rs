@@ -32,7 +32,7 @@ type HandlerResult = Result<CommandOutput, RefusalPayload>;
 pub fn run() -> u8 {
     if let Some(display_mode) = detect_display_mode(std::env::args_os()) {
         return match display_mode {
-            DisplayMode::Describe { json_output } => handle_describe(json_output),
+            DisplayMode::Describe => handle_describe(),
             DisplayMode::Schema {
                 json_output,
                 target,
@@ -55,7 +55,7 @@ pub fn run() -> u8 {
     };
 
     if cli.describe {
-        return handle_describe(cli.json);
+        return handle_describe();
     }
 
     if cli.schema {
@@ -63,12 +63,15 @@ pub fn run() -> u8 {
     }
 
     if cli.robot_triage {
-        let result = Ok(CommandOutput::success(doctor::triage_report()));
-        return if cli.json {
-            output::json::emit("robot triage", result)
-        } else {
-            output::human::emit("robot triage", result)
-        };
+        return doctor::handle_command(None, true, true);
+    }
+
+    // Doctor and capabilities are machine-facing discovery surfaces. Keep
+    // their JSON unwrapped so agents receive the canonical contract/report.
+    match &cli.command {
+        Some(Command::Capabilities) => return doctor::emit_capabilities(cli.json),
+        Some(Command::Doctor(args)) => return doctor::handle_command(Some(args), false, cli.json),
+        _ => {}
     }
 
     let Some(command) = &cli.command else {
@@ -147,6 +150,10 @@ fn command_name(command: &Command) -> &'static str {
             ..
         }) => "doctor capabilities",
         Command::Doctor(DoctorArgs {
+            command: Some(DoctorCommand::Triage(_)),
+            ..
+        }) => "doctor triage",
+        Command::Doctor(DoctorArgs {
             command: Some(DoctorCommand::RobotDocs),
             ..
         }) => "doctor robot-docs",
@@ -190,34 +197,20 @@ fn is_doctor_fix_request(command: &Command) -> bool {
     )
 }
 
-fn handle_describe(json_output: bool) -> u8 {
+fn handle_describe() -> u8 {
     const OPERATOR_JSON: &str = include_str!("../operator.json");
 
-    if json_output {
-        match serde_json::from_str::<Value>(OPERATOR_JSON) {
-            Ok(operator_data) => {
-                println!(
-                    r#"{{"version":"profile.v0","outcome":"SUCCESS","exit_code":0,"subcommand":"describe","result":{},"profile_ref":null,"witness_id":null}}"#,
-                    operator_data
-                );
-            }
-            Err(_) => {
-                println!(
-                    r#"{{"version":"profile.v0","outcome":"REFUSAL","exit_code":2,"subcommand":"describe","result":{{"code":"E_IO","message":"Invalid operator.json format"}},"profile_ref":null,"witness_id":null}}"#
-                );
-                return EXIT_REFUSAL;
-            }
-        }
-    } else {
-        print!("{}", OPERATOR_JSON);
+    if serde_json::from_str::<Value>(OPERATOR_JSON).is_err() {
+        eprintln!("Invalid operator.json format");
+        return EXIT_REFUSAL;
     }
+
+    print!("{}", OPERATOR_JSON);
     EXIT_SUCCESS
 }
 
 enum DisplayMode {
-    Describe {
-        json_output: bool,
-    },
+    Describe,
     Schema {
         json_output: bool,
         target: SchemaTarget,
@@ -241,7 +234,7 @@ where
     let json_output = args.iter().skip(1).any(|arg| arg == "--json");
 
     if args.iter().skip(1).any(|arg| arg == "--describe") {
-        Some(DisplayMode::Describe { json_output })
+        Some(DisplayMode::Describe)
     } else if args.iter().skip(1).any(|arg| arg == "--schema") {
         let target = if args.iter().skip(1).any(|arg| arg == "emit-discovery") {
             SchemaTarget::Discovery
