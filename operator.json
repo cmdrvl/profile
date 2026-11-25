@@ -28,7 +28,8 @@
       "description": "Show raw data values in output (default: redacted for zero-retention safety)"
     },
     { "name": "out", "flag": "--out", "aliases": ["--output"], "type": "path", "description": "Canonical output path flag used by profile-producing commands" },
-    { "name": "sheet", "flag": "--sheet", "type": "string", "description": "Worksheet (name or 0-based index) when the dataset is an .xlsx/.xls workbook; required for a workbook with more than one sheet. Accepted by draft init, lint, stats, suggest-key and slice" }
+    { "name": "sheet", "flag": "--sheet", "type": "string", "description": "Worksheet (name or 0-based index) when the dataset is an .xlsx/.xls workbook; required for a workbook with more than one sheet. Accepted by draft init, lint, stats, suggest-key and slice" },
+    { "name": "max-arity", "flag": "--max-arity", "type": "integer", "description": "Maximum suggest-key arity (1, 2, or 3); composite tuples use ordered ASCII-trimmed components" }
   ],
 
   "commands": [
@@ -42,7 +43,7 @@
     { "name": "slice", "description": "Apply profile/ad-hoc pre_parse directives and registry-backed canonical CSV headers to emit clean CSV plus optional manifest" },
     { "name": "emit-discovery", "description": "Emit a profile.discovery.v0 candidate template from an already-sliced CSV" },
     { "name": "stats", "description": "Deterministic structural stats" },
-    { "name": "suggest-key", "description": "Rank candidate key columns" },
+    { "name": "suggest-key", "description": "Rank single or ordered composite key candidates with bounded hashed retention and collision diagnostics" },
     { "name": "freeze", "description": "Freeze draft into immutable profile" },
     { "name": "list", "description": "List available frozen profiles" },
     { "name": "show", "description": "Show resolved profile" },

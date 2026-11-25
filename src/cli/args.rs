@@ -309,10 +309,26 @@ pub struct SuggestKeyArgs {
     /// Number of top candidates to return
     #[arg(long, default_value_t = 5)]
     pub top: usize,
+
+    /// Maximum key arity to consider (1 by default; 2 or 3 enables composites).
+    #[arg(long, default_value_t = 1, value_parser = parse_max_arity)]
+    pub max_arity: usize,
+
     /// Worksheet when the dataset is an .xlsx/.xls workbook: a sheet name or a 0-based index.
     /// Required for a workbook with more than one sheet. Ignored for other formats.
     #[arg(long, value_name = "NAME|INDEX")]
     pub sheet: Option<String>,
+}
+
+fn parse_max_arity(value: &str) -> Result<usize, String> {
+    let arity = value
+        .parse::<usize>()
+        .map_err(|_| "max arity must be an integer from 1 to 3".to_string())?;
+    if (1..=3).contains(&arity) {
+        Ok(arity)
+    } else {
+        Err("max arity must be an integer from 1 to 3".to_string())
+    }
 }
 
 #[derive(Debug, Clone, Args)]

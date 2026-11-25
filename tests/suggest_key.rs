@@ -123,3 +123,68 @@ fn suggest_key_json_refuses_header_only_dataset_with_e_empty() {
         Some("no data rows")
     );
 }
+
+#[test]
+fn suggest_key_discovers_minimal_composite_key_when_singles_are_not_unique() {
+    let dir = tempfile::tempdir().unwrap();
+    let dataset = dir.path().join("composite.csv");
+    std::fs::write(
+        &dataset,
+        "account,property,as_of\nA,P1,2026-01-01\nA,P2,2026-01-01\nB,P1,2026-01-01\nB,P2,2026-01-01\n",
+    )
+    .unwrap();
+
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("suggest-key")
+        .arg(dataset)
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    let candidate = envelope["result"]["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["arity"] == 2)
+        .expect("automatic composite search should return a pair");
+    assert_eq!(
+        candidate["columns"],
+        serde_json::json!(["account", "property"])
+    );
+    assert_eq!(candidate["uniqueness"], 1.0);
+    assert!(candidate["viable"].as_bool().unwrap());
+    assert_eq!(candidate["incomplete_count"], 0);
+}
+
+#[test]
+fn suggest_key_reports_trim_case_and_duplicate_diagnostics_without_raw_values() {
+    let dir = tempfile::tempdir().unwrap();
+    let dataset = dir.path().join("collisions.csv");
+    std::fs::write(&dataset, "left,right\n A ,X\nA,X\na,x\nNA,NULL\nNA,NULL\n").unwrap();
+
+    let assert = profile_cmd()
+        .arg("--json")
+        .arg("--no-witness")
+        .arg("suggest-key")
+        .arg(dataset)
+        .arg("--max-arity")
+        .arg("2")
+        .assert();
+    let envelope = parse_stdout_json(&assert);
+    common::assert_success_exit!(assert);
+
+    let candidate = envelope["result"]["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["arity"] == 2)
+        .unwrap();
+    assert!(candidate["duplicate_count"].as_u64().unwrap() > 0);
+    assert!(candidate["whitespace_collision_count"].as_u64().unwrap() > 0);
+    assert!(candidate["case_collision_count"].as_u64().unwrap() > 0);
+    let rendered = envelope.to_string();
+    assert!(!rendered.contains(" A "));
+    assert!(!rendered.contains("RAW"));
+}

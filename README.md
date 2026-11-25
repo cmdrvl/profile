@@ -221,10 +221,13 @@ profile draft init vendor_export.csv --from-peek peek.json --out vendor_profile.
 
 ### `profile suggest-key`
 
-Rank candidate key columns by uniqueness, null rate, and deterministic order:
+Rank candidate key columns by uniqueness, null rate, and deterministic order. When no single column
+is unique, `suggest-key` also evaluates minimal ordered 2- and 3-column tuples using compact
+Blake3 hashes; request a maximum arity explicitly when needed:
 
 ```bash
 profile suggest-key loan_tape.csv
+profile suggest-key loan_tape.csv --max-arity 3
 # loan_id: unique=100%, nulls=0%, type=string ← recommended
 # property_id: unique=85%, nulls=0%, type=string
 ```

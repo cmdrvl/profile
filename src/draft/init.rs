@@ -184,6 +184,7 @@ fn resolve_auto_key(
     let suggest_args = SuggestKeyArgs {
         dataset: args.dataset.clone(),
         top: 1,
+        max_arity: 1,
         sheet: args.sheet.clone(),
     };
     let suggest_output = suggest_key::run(&suggest_args, true)?;
@@ -203,13 +204,31 @@ fn resolve_auto_key(
         .get("viable")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let column = candidate
-        .get("column")
-        .and_then(Value::as_str)
-        .unwrap_or("");
+    let columns = candidate
+        .get("columns")
+        .and_then(Value::as_array)
+        .map(|columns| {
+            columns
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|columns| !columns.is_empty())
+        .unwrap_or_else(|| {
+            candidate
+                .get("column")
+                .and_then(Value::as_str)
+                .filter(|column| !column.is_empty())
+                .map(|column| vec![column.to_string()])
+                .unwrap_or_default()
+        });
 
-    if viable && !column.is_empty() {
-        Ok(vec![canonicalize_profile_column(column, column_aliases)])
+    if viable && !columns.is_empty() {
+        Ok(columns
+            .iter()
+            .map(|column| canonicalize_profile_column(column, column_aliases))
+            .collect())
     } else {
         eprintln!("Warning: no viable key candidate found; using key: []");
         Ok(Vec::new())
