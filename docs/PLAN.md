@@ -168,7 +168,7 @@ profile emit-discovery <SLICED_CSV> --source-file <SOURCE_CSV> --skip-rows <N> [
   (builds deterministic profile.discovery.v0 candidate output for fingerprint template promotion from a caller-selected successful slice)
 
 profile emit-verify-starter <FROZEN_PROFILE> [--stats <JSON>] [--out <JSON>] [--json]
-  (emits verify.rules.v1 constraints from frozen profile metadata and redacted stats; raw values are never copied)
+  (emits verify portable authoring from frozen profile metadata and redacted stats; raw values are never copied)
 
 profile emit-ddl <FROZEN_PROFILE> [--stats <JSON>] [--dialect <postgres|snowflake>] [--table <NAME>] [--out <SQL>] [--json]
   (emits twinning.ddl.v1 DDL from the same metadata; identifiers are quoted)
@@ -242,7 +242,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 | `draft new`, `draft init`, `freeze` | YAML file (artifact); prints output path to stdout | Envelope with `result` containing path and (for freeze) profile ref |
 | `slice` | Clean CSV to stdout or `--out`; optional manifest artifact | Envelope with row counts, columns, canonical-header summary, source encoding, output hash, and lineage metadata; data rows omitted unless `--explicit` |
 | `emit-discovery` | Canonical discovery candidate object | Envelope with `result` containing a `profile.discovery.v0` payload |
-| `emit-verify-starter` | Frozen-profile verify projection | Envelope with `result` containing `verify.rules.v1` and no raw values |
+| `emit-verify-starter` | Frozen-profile verify projection | Envelope with `result` = verify portable authoring (`constraint_set_id`, `bindings`, `rules`) and no raw values |
 | `emit-ddl` | Frozen-profile DDL projection | Envelope with `result` containing `twinning.ddl.v1` and SQL |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
 | `inspect` | Zero-retention single-file report | Envelope with structural metadata and no raw strings by default |

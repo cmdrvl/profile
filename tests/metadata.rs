@@ -186,8 +186,23 @@ fn frozen_profile_projections_use_stats_and_never_emit_raw_values() {
         .assert();
     let verify_json = parse_stdout_json(&verify);
     common::assert_success_exit!(verify);
-    assert_eq!(verify_json["result"]["schema"], "verify.rules.v1");
-    assert_eq!(verify_json["result"]["rules"][0]["type"], "text");
+    // bd-hoh: the result is verify portable authoring (no `schema` field); the stats feed it
+    // through nullability: stats-derived non-null columns become `not_null` rules. Column types
+    // have no portable op and are no longer carried.
+    assert!(verify_json["result"].get("schema").is_none());
+    assert_eq!(
+        verify_json["result"]["constraint_set_id"],
+        "csv.loan_tape.core.v0"
+    );
+    assert_eq!(verify_json["result"]["rules"][0]["op"], "unique");
+    assert!(
+        verify_json["result"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|rule| rule["op"] == "not_null"
+                && rule["columns"] == serde_json::json!(["balance"]))
+    );
     assert!(!verify_json.to_string().contains("LN-0001"));
 
     let ddl = profile_cmd()

@@ -14,6 +14,16 @@ use crate::schema::{
     ColumnMetadata, ColumnType, Profile, ValidationMode, parse_profile_yaml, validate_profile,
 };
 
+/// `profile emit-verify-starter`: starter constraints in `verify`'s portable authoring format
+/// (the input of `verify compile`): `constraint_set_id`, `bindings` and `rules` with `id`,
+/// `severity`, `binding`, `op` and `columns`, and no other top-level field. The result IS that
+/// document (so `jq .result` or `--out` both feed `verify compile` directly); the profile's id
+/// and hash travel in the envelope's `profile_ref`.
+///
+/// What it derives: a `not_null` rule per column the profile (or stats) declares non-nullable,
+/// and one `unique` rule over the profile key. Types, units and sensitivity have no portable op,
+/// so they are not carried. A profile with neither a non-nullable column nor a key has nothing
+/// to start from and is refused (`verify compile` rejects an empty rule list).
 pub fn emit_verify_starter(
     args: &EmitVerifyStarterArgs,
     no_witness: bool,
@@ -22,32 +32,52 @@ pub fn emit_verify_starter(
     let stats = load_stats(args.stats.as_deref())?;
     let columns = merged_columns(&profile, &stats);
     let key = profile.key.clone();
-    let rules = columns
-        .iter()
-        .map(|(name, metadata)| {
-            let mut checks = Vec::new();
-            if metadata.nullable == Some(false) {
-                checks.push("not_null");
-            }
-            if key.iter().any(|column| column == name) {
-                checks.push("unique");
-            }
-            let mut rule = json!({
-                "column": name,
-                "type": metadata.type_.unwrap_or(ColumnType::Unknown).as_str(),
-                "nullable": metadata.nullable.unwrap_or(true),
-                "checks": checks,
-            });
-            add_optional_metadata(&mut rule, metadata);
-            rule
-        })
-        .collect::<Vec<_>>();
+    const BINDING: &str = "input";
 
-    let mut result = json!({
-        "schema": "verify.rules.v1",
-        "profile_id": profile.profile_id,
-        "profile_sha256": profile.profile_sha256,
-        "key": key,
+    let mut used_ids = std::collections::BTreeSet::new();
+    let mut rule = |stem: String, op: &str, columns: Vec<String>| {
+        let base = format!("{}_{op}", rule_id_stem(&stem)).to_ascii_uppercase();
+        let mut id = base.clone();
+        let mut n = 2;
+        while !used_ids.insert(id.clone()) {
+            id = format!("{base}_{n}");
+            n += 1;
+        }
+        json!({
+            "id": id,
+            "severity": "error",
+            "binding": BINDING,
+            "op": op,
+            "columns": columns,
+        })
+    };
+    let mut rules = Vec::new();
+    if !key.is_empty() {
+        rules.push(rule("key".to_owned(), "unique", key.clone()));
+    }
+    for (name, metadata) in &columns {
+        if metadata.nullable == Some(false) {
+            rules.push(rule(name.clone(), "not_null", vec![name.clone()]));
+        }
+    }
+    if rules.is_empty() {
+        return Err(RefusalPayload::invalid_schema_single(
+            "profile",
+            "no key and no non-nullable column to derive a starter rule from; declare a key or pass --stats with non-null columns",
+        ));
+    }
+
+    let binding = if key.is_empty() {
+        json!({})
+    } else {
+        json!({ "key_fields": key })
+    };
+    let result = json!({
+        "constraint_set_id": profile
+            .profile_id
+            .clone()
+            .unwrap_or_else(|| "profile.starter".to_owned()),
+        "bindings": { BINDING: binding },
         "rules": rules,
     });
     if let Some(path) = args.out.as_deref() {
@@ -56,11 +86,23 @@ pub fn emit_verify_starter(
         })?;
         fs::write(path, bytes)
             .map_err(|error| RefusalPayload::io(path.display().to_string(), error.to_string()))?;
-        result["path"] = json!(path.display().to_string());
     }
 
     let _ = no_witness;
     Ok(CommandOutput::success(result).with_profile_ref(ProfileRef::from_profile(&profile)))
+}
+
+/// A rule-id stem: ASCII letters and digits, everything else `_`.
+fn rule_id_stem(text: &str) -> String {
+    let stem: String = text
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    if stem.is_empty() {
+        "COLUMN".to_owned()
+    } else {
+        stem
+    }
 }
 
 pub fn emit_ddl(args: &EmitDdlArgs, no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
@@ -216,18 +258,6 @@ fn parse_column_type(value: &str) -> Option<ColumnType> {
         "unknown" => ColumnType::Unknown,
         _ => return None,
     })
-}
-
-fn add_optional_metadata(value: &mut Value, metadata: &ColumnMetadata) {
-    if let Some(unit) = metadata.unit.as_deref() {
-        value["unit"] = json!(unit);
-    }
-    if let Some(sensitivity) = metadata.sensitivity {
-        value["sensitivity"] = json!(sensitivity.as_str());
-    }
-    if let Some(airlock_class) = metadata.airlock_class {
-        value["airlock_class"] = json!(airlock_class.as_str());
-    }
 }
 
 fn sql_type(column_type: ColumnType, dialect: DdlDialect) -> &'static str {

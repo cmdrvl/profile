@@ -341,7 +341,7 @@ Frozen profiles can bootstrap downstream constraints without duplicating YAML. O
     profile --json emit-ddl profiles/csv.loan_tape.core.v0.yaml --stats stats.json \
       --dialect postgres --table loan_tape --out loan_tape.sql
 
-The first emits verify.rules.v1; the second emits twinning.ddl.v1 for Postgres or Snowflake. Both require a frozen profile and are deterministic projections apart from an explicit --out artifact.
+The first emits `verify` portable authoring (`constraint_set_id`, `bindings`, `rules` with `id`, `severity`, `binding`, `op`, `columns`; nothing else at the top level), which `verify compile` accepts directly: `profile --json emit-verify-starter p.yaml --out starter.json && verify compile starter.json`. It derives one `unique` rule over the profile key and a `not_null` rule per column the profile or `--stats` declares non-nullable; types, units and sensitivity have no portable op and are not carried, and a profile with no key and no non-null column is refused. Checked against the released verify 0.6.1. The second emits twinning.ddl.v1 for Postgres or Snowflake. Both require a frozen profile and are deterministic projections apart from an explicit --out artifact.
 
 ### `profile freeze`
 
