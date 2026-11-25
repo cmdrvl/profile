@@ -11,7 +11,7 @@ pub struct RefusalPayload {
     /// Human-readable message
     pub message: String,
     /// Structured detail payload specific to the refusal code
-    pub detail: Value,
+    pub detail: Box<Value>,
     /// Optional suggested remediation command
     pub next_command: Option<String>,
 }
@@ -95,7 +95,7 @@ impl RefusalPayload {
         Self {
             code: code.as_str().to_string(),
             message: code.message().to_string(),
-            detail,
+            detail: Box::new(detail),
             next_command: None,
         }
     }
@@ -230,7 +230,7 @@ impl RefusalPayload {
         Self {
             code: code.into(),
             message: detail_str.clone(),
-            detail: serde_json::Value::String(detail_str),
+            detail: Box::new(serde_json::Value::String(detail_str)),
             next_command: None,
         }
     }
@@ -239,5 +239,27 @@ impl RefusalPayload {
     pub fn with_next_command(mut self, next_command: impl Into<String>) -> Self {
         self.next_command = Some(next_command.into());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn detail_box_preserves_refusal_json_shape() {
+        let payload = RefusalPayload::input_format(
+            "dataset.tsv",
+            "E_AMBIGUOUS_SHEET",
+            "worksheet selection is ambiguous",
+            json!({"sheet_names": ["Summary", "Data"]}),
+        );
+
+        let value = serde_json::to_value(payload).unwrap();
+        assert_eq!(value["code"], "E_INPUT_FORMAT");
+        assert_eq!(value["detail"]["path"], "dataset.tsv");
+        assert_eq!(value["detail"]["tabular_code"], "E_AMBIGUOUS_SHEET");
+        assert_eq!(value["detail"]["context"]["sheet_names"][0], "Summary");
     }
 }
