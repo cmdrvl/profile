@@ -319,12 +319,12 @@ Each redacted column entry also reports a conservative type (integer, number, bo
 
 ### Profile inspect
 
-Inspect one dataset in a single zero-retention report. It combines format/dialect, row and column metadata, numeric summaries, key candidates, and a conservative header/preamble suggestion:
+Inspect one dataset in a single redacted report. It combines format/dialect, row and column metadata, numeric summaries, key candidates, and a conservative header/preamble suggestion:
 
     profile --json inspect loan_tape.csv
     profile --json inspect loans.xlsx --sheet loans
 
-Columns carry an `id` (a `redacted:ref:cN` ref, see Header redaction); `name` appears only with `--explicit`. String examples are omitted by default. Numeric min/max/quantiles and counts are structural; use the global --explicit flag only when raw examples are intentionally authorized.
+Columns carry an `id` (a `redacted:ref:cN` ref, see Header redaction); `name` appears only with `--explicit`. String examples and numeric `min`/`max` are redacted by default: their keys remain present with `null`, so consumers can distinguish redaction from a non-numeric column. `p50` and `p95` remain numeric distribution summaries and can coincide with an observed cell; inspect emits no sum, mean, or example field. Use the global `--explicit` flag only when raw examples and exact extrema are intentionally authorized; it restores today's numeric values.
 
 ### Header redaction (`slice`, `inspect`, `stats`, `suggest-key`, `evolve`)
 
@@ -343,7 +343,7 @@ On a messy sheet the header row can be a title banner, a methodology paragraph o
 2. the CSV written by `profile slice --out` and the JSON written by `profile slice --emit-manifest`;
 3. the draft profile YAML written by `profile evolve --out`.
 
-Everything PRINTED to stdout or stderr stays redacted by default (ordinal refs, or keyed markers with `PROFILE_REDACTION_KEY`) and shows names only with `--explicit`. `draft init` and `lint` print no dataset header text on stdout; `lint` reports the profile's own column names. Not exempt and still open: the registry-ambiguity refusal text echoes raw physical headers.
+Everything PRINTED to stdout or stderr stays header/example/extrema-redacted by default (ordinal refs, or keyed markers with `PROFILE_REDACTION_KEY`) and shows names, examples, and exact extrema only with `--explicit`. Inspect's `p50`/`p95` fields remain aggregate summaries and may equal a cell; `draft init` and `lint` print no dataset header text on stdout; `lint` reports the profile's own column names. Not exempt and still open: the registry-ambiguity refusal text echoes raw physical headers.
 
 When a workbook has several sheets and none is chosen, `E_AMBIGUOUS_SHEET` / `E_SHEET_NOT_FOUND` carry a copy-pasteable `next_command` with the real subcommand and a shell-quoted path (`profile stats 'report (1).xlsx' --sheet 0`).
 

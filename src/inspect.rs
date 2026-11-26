@@ -1,7 +1,8 @@
-//! Single-file, zero-retention dataset inspection.
+//! Single-file dataset inspection with deterministic default redaction.
 //!
 //! The inspector keeps values only long enough to calculate counts and numeric summaries. Its
-//! default result contains no examples or raw string values, so it is safe to pass to an agent.
+//! default result contains no examples or raw string values, and redacts numeric extrema; use
+//! `--explicit` when an operator has authorized the exact extrema and examples.
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -69,15 +70,15 @@ impl ColumnAccumulator {
         }
     }
 
-    fn numeric_summary(&self) -> Value {
+    fn numeric_summary(&self, explicit: bool) -> Value {
         if self.saw_non_numeric || self.numeric_values.is_empty() {
             return Value::Null;
         }
         let mut values = self.numeric_values.clone();
         values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
         json!({
-            "min": values[0],
-            "max": values[values.len() - 1],
+            "min": if explicit { json!(values[0]) } else { Value::Null },
+            "max": if explicit { json!(values[values.len() - 1]) } else { Value::Null },
             "p50": quantile(&values, 0.50),
             "p95": quantile(&values, 0.95),
         })
@@ -130,7 +131,7 @@ pub fn run(args: &InspectArgs, explicit: bool) -> Result<CommandOutput, RefusalP
             "null_rate": null_rate,
             "distinct_count": accumulator.values.len(),
             "uniqueness": accumulator.values.len() as f64 / row_count as f64,
-            "numeric": accumulator.numeric_summary(),
+            "numeric": accumulator.numeric_summary(explicit),
         });
         if explicit {
             column["name"] = json!(name);

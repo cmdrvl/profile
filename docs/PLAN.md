@@ -130,7 +130,7 @@ Commands:
   emit-verify-starter <PROFILE>  Emit starter verify rules from a frozen profile
   emit-ddl <PROFILE>     Emit deterministic Postgres/Snowflake DDL from a frozen profile
   stats <DATASET>        Deterministic structural stats for a dataset
-  inspect <DATASET>      Zero-retention single-file structural/statistical inspection
+  inspect <DATASET>      Single-file structural/statistical inspection; min/max are redacted unless --explicit
   suggest-key <DATASET>  Rank candidate key columns deterministically
   freeze <DRAFT>         Freeze a draft into an immutable profile
   list                   List available frozen profiles
@@ -174,7 +174,7 @@ profile emit-ddl <FROZEN_PROFILE> [--stats <JSON>] [--dialect <postgres|snowflak
   (emits twinning.ddl.v1 DDL from the same metadata; identifiers are quoted)
 
 profile inspect <DATASET> [--sheet <NAME|INDEX>] [--json]
-  (emits format/dialect, row and column metadata, redacted numeric summaries, ranked key candidates, and header/preamble suggestions)
+  (emits format/dialect, row and column metadata, numeric summaries with min/max redacted by default, ranked key candidates, and header/preamble suggestions; --explicit restores exact extrema and examples)
 
 profile [--explicit] stats <DATASET> [--profile <FILE>] [--json]
   (reports column counts, null rates, and key viability; deterministic ordering; example values are omitted unless --explicit is set; when a profile carries column_registry, profile columns are resolved against canonicalized headers)
@@ -245,7 +245,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 | `emit-verify-starter` | Frozen-profile verify projection | Envelope with `result` = verify portable authoring (`constraint_set_id`, `bindings`, `rules`) and no raw values |
 | `emit-ddl` | Frozen-profile DDL projection | Envelope with `result` containing `twinning.ddl.v1` and SQL |
 | `stats`, `suggest-key` | Report (human default) | Envelope with subcommand-specific `result` |
-| `inspect` | Zero-retention single-file report | Envelope with structural metadata and no raw strings by default |
+| `inspect` | Single-file structural report | Envelope with structural metadata, null `numeric.min`/`numeric.max` by default, and no raw strings; `--explicit` restores exact extrema and examples |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
 | `list`, `show`, `diff` | Report (human default) | Envelope with subcommand-specific `result` |
 | `witness` | Report (human default) | N/A |
