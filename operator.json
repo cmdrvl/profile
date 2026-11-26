@@ -76,7 +76,8 @@
     { "code": "E_COLUMN_NOT_FOUND", "message": "Column not found in dataset", "action": "fix_input" },
     { "code": "E_INPUT_FORMAT", "message": "Input refused by the shared tabular reader (TSV, JSONL, Parquet, XLSX)", "action": "fix_input" },
     { "code": "E_REDACTION_KEY_INVALID", "message": "PROFILE_REDACTION_KEY is empty or too short", "action": "fix_input" },
-    { "code": "E_OUTPUT_REQUIRED", "message": "slice would print the CSV to stdout; pass --out <path> or --explicit", "action": "fix_input" }
+    { "code": "E_OUTPUT_REQUIRED", "message": "slice would print the CSV to stdout; pass --out <path> or --explicit", "action": "fix_input" },
+    { "code": "E_NETWORK_DISABLED", "message": "This build has no network support (Cargo feature `network`)", "action": "fix_input" }
   ],
 
   "formats": ["csv", "tsv", "jsonl", "parquet", "xlsx", "yaml", "json"],
@@ -84,7 +85,7 @@
   "env_vars": [
     { "name": "HOME", "description": "Base directory for profile configuration and state" },
     { "name": "EPISTEMIC_WITNESS", "description": "Optional witness ledger path override" },
-    { "name": "EPISTEMIC_FABRIC_URL", "description": "Optional data-fabric endpoint" },
+    { "name": "EPISTEMIC_FABRIC_URL", "description": "Optional data-fabric endpoint (push and pull exist only in a build with the `network` Cargo feature)" },
     { "name": "NO_COLOR", "description": "Disable terminal color" },
     { "name": "TERM", "description": "Terminal capability hint" },
     { "name": "SOURCE_DATE_EPOCH", "description": "Unix timestamp for reproducible witness records" },

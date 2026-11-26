@@ -1,3 +1,7 @@
+//! Push/pull against a local one-shot HTTP server. Needs the `network` feature: CI runs
+//! `cargo test --features network` (see .github/workflows/ci.yml).
+#![cfg(feature = "network")]
+
 mod common;
 
 use std::fs;

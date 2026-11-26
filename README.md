@@ -496,7 +496,7 @@ With `--json`, refusals are emitted in the unified output envelope (`outcome=REF
 ### Managed paths
 
 - Frozen profile lookup: `~/.cmdrvl/config/profile/profiles/`; legacy `~/.epistemic/profiles/` is copied on first default use.
-- Fabric config for `push`/`pull`: `$EPISTEMIC_FABRIC_URL` or `~/.cmdrvl/config/profile/config.toml`; legacy `~/.epistemic/config.toml` is copied on first default use.
+- Fabric config for `push`/`pull` (only in a build with the `network` feature; the default build refuses `E_NETWORK_DISABLED`): `$EPISTEMIC_FABRIC_URL` or `~/.cmdrvl/config/profile/config.toml`; legacy `~/.epistemic/config.toml` is copied on first default use.
 
 ### Witness behavior
 
@@ -561,8 +561,8 @@ Ensure the profile file is committed and the path is correct. Profiles are plain
 | **Single key type** | Composite keys supported, but only column-based — no expression keys |
 | **No auto-update** | Profile doesn't auto-detect schema changes — use `lint` to catch drift |
 | **Registry paths are local** | Profiles can reference local column registries, but registry distribution/resolution is still path-based in v0 |
-| **Network publish deferred** | `push`/`pull` data-fabric wrappers are deferred in v0.1 |
-| **Pre-release** | Implementation in progress — spec is complete in the epistemic spine plan |
+| **Network publish is opt-in** | `push`/`pull` data-fabric wrappers exist only in a build with the `network` Cargo feature (`cargo install profile --features network`). The default build has no HTTP or TLS crates and `push`/`pull` refuse `E_NETWORK_DISABLED` (exit 2) |
+| **Shipped (0.12.0)** | The commands above are implemented and tested: draft, validate, lint, evolve, freeze, slice, stats, inspect, suggest-key, diff, show, list, projections (`emit-verify-starter`, `emit-ddl`, `emit-discovery`), witness queries, and `doctor`. Default output redacts dataset header text and refuses raw CSV on stdout (see Header redaction and `profile slice`) |
 
 ---
 
@@ -606,12 +606,13 @@ For the full toolchain guide, see the [Agent Operator Guide](https://github.com/
 
 ## Spec and Development
 
-The profile specification is part of the [epistemic spine plan](https://github.com/cmdrvl/cmdrvl-context). This README covers intended behavior; implementation is in progress.
+This README describes the behavior of the released binary (profile 0.12.0); the design notes are in `docs/PLAN.md`.
 
 ```bash
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
+cargo test --features network   # push/pull against a local test server
 ```
 
 ---

@@ -22,6 +22,7 @@ pub(crate) fn profile_dir_for_read() -> io::Result<PathBuf> {
     profile_dir_for_read_from_env(|key| env::var_os(key))
 }
 
+#[cfg(feature = "network")]
 pub(crate) fn fabric_config_path_for_read() -> io::Result<PathBuf> {
     fabric_config_path_for_read_from_env(|key| env::var_os(key))
 }
@@ -84,6 +85,7 @@ where
         .join("profiles")
 }
 
+#[cfg(feature = "network")]
 fn fabric_config_path_for_read_from_env<F>(get_env: F) -> io::Result<PathBuf>
 where
     F: Fn(&str) -> Option<OsString> + Copy,
@@ -98,6 +100,7 @@ where
     Ok(canonical)
 }
 
+#[cfg(feature = "network")]
 fn fabric_config_path_from_env<F>(get_env: F) -> PathBuf
 where
     F: Fn(&str) -> Option<OsString> + Copy,
@@ -290,6 +293,7 @@ where
     paths
 }
 
+#[cfg(feature = "network")]
 fn legacy_fabric_config_paths_from_env<F>(get_env: F) -> Vec<PathBuf>
 where
     F: Fn(&str) -> Option<OsString> + Copy,
@@ -462,9 +466,11 @@ fn harden_file(_path: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "network")]
+    use super::fabric_config_path_for_read_from_env;
     use super::{
-        fabric_config_path_for_read_from_env, profile_dir_for_read_from_env,
-        witness_ledger_path_for_append_from_env, witness_ledger_path_from_env,
+        profile_dir_for_read_from_env, witness_ledger_path_for_append_from_env,
+        witness_ledger_path_from_env,
     };
     use std::{ffi::OsString, fs, path::Path};
 
@@ -543,6 +549,7 @@ mod tests {
         fs::remove_dir_all(tmp).ok();
     }
 
+    #[cfg(feature = "network")]
     #[test]
     fn fabric_config_read_migrates_legacy_config() {
         let tmp = tempfile_dir("profile-paths-config");

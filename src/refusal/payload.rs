@@ -221,6 +221,15 @@ impl RefusalPayload {
         )
     }
 
+    /// `push` / `pull` in a build without the `network` Cargo feature.
+    pub fn network_disabled() -> Self {
+        Self::new(
+            RefusalCode::NetworkDisabled,
+            serde_json::json!({ "feature": "network", "reason": "this build has no network support" }),
+        )
+        .with_next_command("Rebuild with the network feature: cargo install profile --features network (or cargo build --features network)")
+    }
+
     /// Human-mode `slice` with neither `--out` nor `--explicit`: refuse instead of printing rows.
     pub fn output_required(file: &std::path::Path) -> Self {
         Self::new(

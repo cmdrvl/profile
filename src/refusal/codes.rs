@@ -28,6 +28,8 @@ pub enum RefusalCode {
     RedactionKeyInvalid,
     /// Human-mode `slice` without `--out` or `--explicit`: raw CSV rows never reach stdout by default
     OutputRequired,
+    /// `push` / `pull` in a build without the `network` Cargo feature
+    NetworkDisabled,
 }
 
 impl RefusalCode {
@@ -45,6 +47,7 @@ impl RefusalCode {
             Self::InputFormat => "E_INPUT_FORMAT",
             Self::RedactionKeyInvalid => "E_REDACTION_KEY_INVALID",
             Self::OutputRequired => "E_OUTPUT_REQUIRED",
+            Self::NetworkDisabled => "E_NETWORK_DISABLED",
         }
     }
 
@@ -66,6 +69,7 @@ impl RefusalCode {
             Self::OutputRequired => {
                 "slice would print the CSV to stdout; pass --out <path> or --explicit"
             }
+            Self::NetworkDisabled => "This build has no network support (Cargo feature `network`)",
         }
     }
 
@@ -80,7 +84,8 @@ impl RefusalCode {
             | Self::ColumnNotFound
             | Self::InputFormat
             | Self::RedactionKeyInvalid
-            | Self::OutputRequired => "fix_input",
+            | Self::OutputRequired
+            | Self::NetworkDisabled => "fix_input",
             Self::AlreadyFrozen | Self::Io => "escalate",
         }
     }

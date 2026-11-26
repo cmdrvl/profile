@@ -10,7 +10,16 @@ use crate::refusal::payload::RefusalPayload;
 use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
 
 pub fn run(args: &PushArgs, _no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
-    handle_push(&args.file)
+    // Refuse before reading any file when this build has no network client.
+    #[cfg(not(feature = "network"))]
+    {
+        let _ = args;
+        Err(RefusalPayload::network_disabled())
+    }
+    #[cfg(feature = "network")]
+    {
+        handle_push(&args.file)
+    }
 }
 
 pub fn handle_push(file: &Path) -> Result<CommandOutput, RefusalPayload> {

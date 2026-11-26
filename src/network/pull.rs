@@ -9,7 +9,16 @@ use crate::refusal::payload::RefusalPayload;
 use crate::schema::{ValidationMode, parse_profile_yaml, validate_profile};
 
 pub fn run(args: &PullArgs, _no_witness: bool) -> Result<Value, RefusalPayload> {
-    handle_pull(&args.profile_id, &args.out)
+    // Refuse before touching the filesystem when this build has no network client.
+    #[cfg(not(feature = "network"))]
+    {
+        let _ = args;
+        Err(RefusalPayload::network_disabled())
+    }
+    #[cfg(feature = "network")]
+    {
+        handle_pull(&args.profile_id, &args.out)
+    }
 }
 
 pub fn handle_pull(profile_id: &str, out: &Path) -> Result<Value, RefusalPayload> {

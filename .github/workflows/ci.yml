@@ -42,6 +42,21 @@ jobs:
       - name: Test suite
         run: cargo test
 
+      # The default build has no network client (bd-t1r); push/pull and tests/push_pull.rs only
+      # exist with the `network` feature, so lint and test that configuration too.
+      - name: Clippy, network feature (deny warnings)
+        run: cargo clippy --all-targets --features network -- -D warnings
+
+      - name: Test suite, network feature
+        run: cargo test --features network
+
+      - name: Default build has no HTTP/TLS crates
+        run: |
+          if cargo tree --edges normal | grep -Ei 'ureq|rustls|hyper|reqwest|native-tls'; then
+            echo "network crates are in the default dependency graph" >&2
+            exit 1
+          fi
+
       - name: Local reproduction commands
         if: failure()
         run: |
