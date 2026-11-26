@@ -16,9 +16,39 @@ permissions:
   contents: read
 
 jobs:
+  # A release run whose jobs were all skipped (version already released) also concludes
+  # "success": only sync the tap when that run's release job actually published.
+  gate:
+    name: Did the release run publish
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      sync: ${{ steps.gate.outputs.sync }}
+    steps:
+      - name: Check the release job
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          sync=true
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
+            released="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" \
+              --jq '.jobs[] | select(.name == "Release artifacts") | .conclusion')"
+            if [[ "$released" != "success" ]]; then
+              sync=false
+              echo "::notice::release run $RUN_ID published nothing (release job: ${released:-absent}); not touching the tap."
+            fi
+          fi
+          echo "sync=$sync" >> "$GITHUB_OUTPUT"
+
   update-homebrew:
     name: Update Homebrew tap
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    needs: gate
+    if: needs.gate.outputs.sync == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
