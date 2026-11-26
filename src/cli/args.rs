@@ -59,7 +59,7 @@ pub enum Command {
     Slice(SliceArgs),
     /// Show structural statistics for a dataset
     Stats(StatsArgs),
-    /// Inspect one dataset with deterministic structural metadata; min/max are redacted unless --explicit
+    /// Inspect one dataset with deterministic structural metadata; numeric summaries are redacted unless --explicit
     Inspect(InspectArgs),
     /// Rank candidate key columns by uniqueness
     SuggestKey(SuggestKeyArgs),

@@ -48,7 +48,7 @@
     { "name": "emit-verify-starter", "description": "Emit zero-retention starter verify rules from a frozen profile and optional stats" },
     { "name": "emit-ddl", "description": "Emit deterministic Postgres or Snowflake DDL from a frozen profile and optional stats" },
     { "name": "stats", "description": "Deterministic structural stats" },
-    { "name": "inspect", "description": "Single-file structural/statistical inspection; default numeric min/max are null and --explicit restores exact extrema and examples" },
+    { "name": "inspect", "description": "Single-file structural/statistical inspection; default numeric min/max/p50/p95 are null and --explicit restores exact summaries and examples" },
     { "name": "suggest-key", "description": "Rank single or ordered composite key candidates with bounded hashed retention and collision diagnostics" },
     { "name": "freeze", "description": "Freeze draft into immutable profile" },
     { "name": "list", "description": "List available frozen profiles" },

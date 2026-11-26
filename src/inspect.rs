@@ -1,8 +1,8 @@
 //! Single-file dataset inspection with deterministic default redaction.
 //!
 //! The inspector keeps values only long enough to calculate counts and numeric summaries. Its
-//! default result contains no examples or raw string values, and redacts numeric extrema; use
-//! `--explicit` when an operator has authorized the exact extrema and examples.
+//! default result contains no examples or raw string values, and redacts numeric summaries; use
+//! `--explicit` when an operator has authorized the exact summaries and examples.
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -76,11 +76,15 @@ impl ColumnAccumulator {
         }
         let mut values = self.numeric_values.clone();
         values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
+        let min = values[0];
+        let max = values[values.len() - 1];
+        let p50 = quantile(&values, 0.50);
+        let p95 = quantile(&values, 0.95);
         json!({
-            "min": if explicit { json!(values[0]) } else { Value::Null },
-            "max": if explicit { json!(values[values.len() - 1]) } else { Value::Null },
-            "p50": quantile(&values, 0.50),
-            "p95": quantile(&values, 0.95),
+            "min": if explicit { json!(min) } else { Value::Null },
+            "max": if explicit { json!(max) } else { Value::Null },
+            "p50": if explicit { json!(p50) } else { Value::Null },
+            "p95": if explicit { json!(p95) } else { Value::Null },
         })
     }
 }

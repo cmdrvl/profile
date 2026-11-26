@@ -22,7 +22,7 @@ fn run_with(path: &str, flags: &[&str]) -> Value {
 }
 
 #[test]
-fn inspect_default_redacts_extrema_and_preserves_numeric_summary() {
+fn inspect_default_redacts_numeric_summaries() {
     let output = run("datasets/valid/loan_tape_basic.csv");
     assert_eq!(output["result"]["format"], "csv");
     assert_eq!(output["result"]["row_count"], 3);
@@ -49,8 +49,8 @@ fn inspect_default_redacts_extrema_and_preserves_numeric_summary() {
         .unwrap();
     assert_eq!(default_balance["numeric"]["min"], Value::Null);
     assert_eq!(default_balance["numeric"]["max"], Value::Null);
-    assert_eq!(default_balance["numeric"]["p50"], balance["numeric"]["p50"]);
-    assert_eq!(default_balance["numeric"]["p95"], balance["numeric"]["p95"]);
+    assert_eq!(default_balance["numeric"]["p50"], Value::Null);
+    assert_eq!(default_balance["numeric"]["p95"], Value::Null);
     assert_eq!(balance["type"], "number");
     assert_eq!(balance["null_count"], 0);
     assert_eq!(balance["distinct_count"], 3);
@@ -71,6 +71,8 @@ fn inspect_is_deterministic_across_supported_tabular_containers() {
             if column["numeric"].is_object() {
                 assert_eq!(column["numeric"]["min"], Value::Null, "old.{extension}");
                 assert_eq!(column["numeric"]["max"], Value::Null, "old.{extension}");
+                assert_eq!(column["numeric"]["p50"], Value::Null, "old.{extension}");
+                assert_eq!(column["numeric"]["p95"], Value::Null, "old.{extension}");
             }
         }
         let explicit = run_with(&format!("formats/old.{extension}"), &["--explicit"]);
@@ -82,6 +84,8 @@ fn inspect_is_deterministic_across_supported_tabular_containers() {
             .unwrap();
         assert_eq!(balance["numeric"]["min"], 300.25, "old.{extension}");
         assert_eq!(balance["numeric"]["max"], 2000.0, "old.{extension}");
+        assert_eq!(balance["numeric"]["p50"], 1000.5, "old.{extension}");
+        assert_eq!(balance["numeric"]["p95"], 1900.05, "old.{extension}");
         let mut expected_result = baseline["result"].clone();
         let mut actual_result = got["result"].clone();
         for result in [&mut expected_result, &mut actual_result] {
@@ -121,36 +125,59 @@ fn inspect_refuses_header_only_input_without_partial_metadata() {
 }
 
 #[test]
-fn inspect_default_redacts_numeric_extrema_canary() {
+fn inspect_default_redacts_all_numeric_statistics_canaries() {
     let workspace = common::temp_workspace();
-    let dataset = workspace.path().join("numeric-canary.csv");
-    fs::write(&dataset, "id,amount\nalpha,918273645.19\nbeta,10\n").unwrap();
+    let cases = [
+        (
+            "one-row",
+            "id,amount\nalpha,-918273645.19\n",
+            &["-918273645.19"][..],
+        ),
+        (
+            "odd-repeated-negative",
+            "id,amount\na,-7777777.125\nb,-7777777.125\nc,123456789.625\n",
+            &["-7777777.125", "123456789.625"][..],
+        ),
+        (
+            "even-negative",
+            "id,amount\na,-888888888.5\nb,-888888888.5\nc,-12.25\nd,444444444.75\n",
+            &["-888888888.5", "-12.25", "444444444.75"][..],
+        ),
+    ];
 
-    let assert = profile_cmd()
-        .arg("--json")
-        .arg("--no-witness")
-        .arg("inspect")
-        .arg(&dataset)
-        .assert();
-    let output = parse_stdout_json(&assert);
-    common::assert_success_exit!(assert);
+    for (label, csv, canaries) in cases {
+        let dataset = workspace.path().join(format!("{label}.csv"));
+        fs::write(&dataset, csv).unwrap();
+        let assert = profile_cmd()
+            .arg("--json")
+            .arg("--no-witness")
+            .arg("inspect")
+            .arg(&dataset)
+            .assert();
+        let output = parse_stdout_json(&assert);
+        common::assert_success_exit!(assert);
 
-    let amount = output["result"]["columns"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|column| column["id"] == "redacted:ref:c2")
-        .unwrap();
-    assert_eq!(amount["numeric"]["min"], Value::Null);
-    assert_eq!(amount["numeric"]["max"], Value::Null);
-    assert_eq!(amount["numeric"]["p50"], 459136827.595);
-    let rendered = output.to_string();
-    assert!(!rendered.contains("918273645.19"));
-    assert!(!rendered.contains("\"min\":10"));
+        let amount = output["result"]["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|column| column["id"] == "redacted:ref:c2")
+            .unwrap();
+        for field in ["min", "max", "p50", "p95"] {
+            assert_eq!(amount["numeric"][field], Value::Null, "{label} {field}");
+        }
+        let rendered = output.to_string();
+        for canary in canaries {
+            assert!(
+                !rendered.contains(canary),
+                "{label} leaked {canary}: {rendered}"
+            );
+        }
+    }
 }
 
 #[test]
-fn inspect_human_output_redacts_numeric_extrema() {
+fn inspect_human_output_redacts_numeric_summaries() {
     let workspace = common::temp_workspace();
     let dataset = workspace.path().join("numeric-canary.csv");
     fs::write(&dataset, "id,amount\nalpha,918273645.19\nbeta,10\n").unwrap();
@@ -161,6 +188,29 @@ fn inspect_human_output_redacts_numeric_extrema() {
     assert!(!stdout.contains("918273645.19"));
     assert!(!stdout.contains("\"min\": 10"));
     assert!(!stdout.contains("\"max\": 918273645.19"));
+
+    let one_row = workspace.path().join("one-row-human.csv");
+    fs::write(&one_row, "id,amount\nalpha,-918273645.19\n").unwrap();
+    let assert = profile_cmd().arg("inspect").arg(&one_row).assert();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    common::assert_success_exit!(assert);
+    assert!(!stdout.contains("-918273645.19"));
+
+    for extension in ["csv", "tsv", "jsonl", "parquet", "xlsx"] {
+        let fixture = format!("formats/old.{extension}");
+        let assert = profile_cmd()
+            .arg("inspect")
+            .arg(fixture_path(&fixture))
+            .assert();
+        let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+        common::assert_success_exit!(assert);
+        for canary in ["1000.5", "2000.0", "300.25", "0.05", "0.06", "0.04"] {
+            assert!(
+                !stdout.contains(canary),
+                "{extension} human inspect leaked {canary}: {stdout}"
+            );
+        }
+    }
 }
 
 #[test]
