@@ -271,6 +271,8 @@ The result reports `next_profile_version` and typed `next_actions`; the output r
 the operator reviews it, runs `profile lint`, and invokes `profile freeze` with the next version.
 Ambiguous rename candidates are surfaced for confirmation and are never applied silently.
 
+Without `--explicit`, header text from the new dataset is never printed (bd-bix): `added_columns`, the `new` side of `renamed_candidates`, `key_status.repaired[].to` and, in `--view full`, the dataset-origin entries of `draft_profile` are `redacted:ref:cN` refs numbered in the dataset's header-row order (equal text shares a ref; ranking ties use header position, never text), or keyed `redacted:hmac-sha256:` markers with `PROFILE_REDACTION_KEY` (the same marker `inspect` gives that header). The profile's own names stay. The draft file written by `--out` keeps the real names. To map a ref back, rerun with `--explicit` or run `profile inspect|slice --explicit` on the same header row. An unusable key refuses `E_REDACTION_KEY_INVALID` before any draft is written.
+
 ### `profile slice`
 
 Apply profile-driven or ad-hoc pre-parse directives to emit clean CSV. When the profile declares `column_registry`, `slice` also materializes canonical CSV headers after any pre-parse row cleanup:
@@ -320,7 +322,7 @@ Inspect one dataset in a single zero-retention report. It combines format/dialec
 
 String examples are omitted by default. Numeric min/max/quantiles and counts are structural; use the global --explicit flag only when raw examples are intentionally authorized.
 
-### Header redaction (`slice`, `inspect`, `stats`, `suggest-key`)
+### Header redaction (`slice`, `inspect`, `stats`, `suggest-key`, `evolve`)
 
 On a messy sheet the header row can be a title banner, a methodology paragraph or an actual data row, so header text is dataset content. Without `--explicit`, these four commands never print it; a column is an `id`:
 
@@ -329,7 +331,7 @@ On a messy sheet the header row can be a title banner, a methodology paragraph o
 - `--explicit` prints the names (`name` beside `id`; `slice` lists the real headers in `columns`). `stats --profile` keeps the profile's own column names, which are not dataset text.
 - A `slice --emit-manifest` file and `--out` CSV are artifacts you asked for and keep real headers. Refusals withhold the dataset's sheet names (`sheet_count`) and header list (`available_count`) unless `--explicit`.
 - `emit-verify-starter` / `emit-ddl` read column names from a `--stats` file, so feed them `profile --explicit stats ...` output or `stats --profile <frozen profile>`; a default (redacted) stats file now refuses instead of silently dropping every type.
-- Not covered: `draft init` (writes the profile YAML with the dataset's header names, by design) and `evolve` (diffs profile columns against the new dataset's names).
+- `evolve` is covered too (see `profile evolve`). Not covered: `draft init` (writes the profile YAML with the dataset's header names, by design).
 
 When a workbook has several sheets and none is chosen, `E_AMBIGUOUS_SHEET` / `E_SHEET_NOT_FOUND` carry a copy-pasteable `next_command` with the real subcommand and a shell-quoted path (`profile stats 'report (1).xlsx' --sheet 0`).
 

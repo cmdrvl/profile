@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::cli::args::{EvolveArgs, EvolveView};
 use crate::output::json::{CommandOutput, ProfileRef};
+use crate::redaction::{Kind, Marker};
 use crate::refusal::RefusalPayload;
 use crate::schema::{
     PreParse, Profile, ProfileStatus, ValidationMode, build_header_index,
@@ -19,7 +20,13 @@ use crate::schema::{
     resolve_registry_path, validate_frozen_registry_hash, validate_profile,
 };
 
-pub fn run(args: &EvolveArgs, _no_witness: bool) -> Result<CommandOutput, RefusalPayload> {
+pub fn run(
+    args: &EvolveArgs,
+    _no_witness: bool,
+    explicit: bool,
+) -> Result<CommandOutput, RefusalPayload> {
+    // Checked before anything is written: an unusable key never produces a draft.
+    let mut marker = Marker::for_output(explicit)?;
     if args.out.exists() {
         return Err(RefusalPayload::io(
             args.out.display().to_string(),
@@ -93,6 +100,20 @@ pub fn run(args: &EvolveArgs, _no_witness: bool) -> Result<CommandOutput, Refusa
         .cloned()
         .collect::<Vec<_>>();
 
+    // Without --explicit a dataset header is an ordinal ref numbered in header-row order (or a
+    // keyed marker) computed over the RAW header text, so one column is one marker even where
+    // evolve also holds its registry-canonical spelling (canonical -> ref goes by position).
+    let mut dataset_refs: HashMap<String, String> = HashMap::new();
+    if !explicit {
+        for (raw, canonical) in raw_headers.iter().zip(&canonical_headers) {
+            let reference = marker.mark(Kind::Column, raw);
+            dataset_refs
+                .entry(raw.clone())
+                .or_insert_with(|| reference.clone());
+            dataset_refs.entry(canonical.clone()).or_insert(reference);
+        }
+    }
+
     let renamed_candidates = rename_candidates(
         &old_include,
         &dropped_columns,
@@ -153,6 +174,7 @@ pub fn run(args: &EvolveArgs, _no_witness: bool) -> Result<CommandOutput, Refusa
     ];
 
     let mut result = json!({
+        "redaction": if explicit { "explicit" } else { marker.mode() },
         "view": view_name(args.view),
         "output_path": args.out.display().to_string(),
         "next_profile_version": next_profile_version,
@@ -171,7 +193,62 @@ pub fn run(args: &EvolveArgs, _no_witness: bool) -> Result<CommandOutput, Refusa
             .map_err(|error| RefusalPayload::invalid_schema_single("profile", error.to_string()))?;
     }
 
+    if !explicit {
+        redact_dataset_names(&mut result, &dataset_refs, &old_include_set);
+    }
+
     Ok(CommandOutput::success(result).with_profile_ref(ProfileRef::from_profile(&old_profile)))
+}
+
+/// Replace every name that came from the DATASET with its ref: `added_columns`, the `new` side of
+/// `renamed_candidates`, `key_status.repaired[].to`, and, in the full view, the dataset-origin
+/// entries of `draft_profile.include_columns` / `key`. Profile-side names stay (they are the
+/// profile author's words, not dataset text).
+fn redact_dataset_names(
+    result: &mut Value,
+    refs: &HashMap<String, String>,
+    old_include: &HashSet<String>,
+) {
+    let reference = |name: &str| -> Value {
+        json!(
+            refs.get(name)
+                .cloned()
+                .unwrap_or_else(|| "redacted:ref:unknown".to_owned())
+        )
+    };
+    if let Some(added) = result["added_columns"].as_array_mut() {
+        for entry in added {
+            if let Some(name) = entry.as_str().map(str::to_owned) {
+                *entry = reference(&name);
+            }
+        }
+    }
+    if let Some(candidates) = result["renamed_candidates"].as_array_mut() {
+        for candidate in candidates {
+            if let Some(name) = candidate["new"].as_str().map(str::to_owned) {
+                candidate["new"] = reference(&name);
+            }
+        }
+    }
+    if let Some(repaired) = result["key_status"]["repaired"].as_array_mut() {
+        for entry in repaired {
+            if let Some(name) = entry["to"].as_str().map(str::to_owned) {
+                entry["to"] = reference(&name);
+            }
+        }
+    }
+    for field in ["include_columns", "key"] {
+        if let Some(entries) = result["draft_profile"][field].as_array_mut() {
+            for entry in entries {
+                if let Some(name) = entry.as_str().map(str::to_owned)
+                    && !old_include.contains(&name)
+                    && refs.contains_key(&name)
+                {
+                    *entry = reference(&name);
+                }
+            }
+        }
+    }
 }
 
 fn read_headers(
@@ -287,19 +364,23 @@ fn rename_candidates(
     for old in dropped {
         let mut matches = canonical_headers
             .iter()
-            .map(|new| (new, similarity(old, new)))
-            .filter(|(_, score)| *score >= 0.5)
+            .enumerate()
+            .map(|(index, new)| (new, similarity(old, new), index))
+            .filter(|(_, score, _)| *score >= 0.5)
             .collect::<Vec<_>>();
-        matches.sort_by(|(left_name, left_score), (right_name, right_score)| {
-            right_score
-                .partial_cmp(left_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| left_name.cmp(right_name))
-        });
-        if let Some((new, score)) = matches.first() {
+        // Equal scores keep header-row order: the ranking never looks at header text bytes.
+        matches.sort_by(
+            |(_, left_score, left_index), (_, right_score, right_index)| {
+                right_score
+                    .partial_cmp(left_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| left_index.cmp(right_index))
+            },
+        );
+        if let Some((new, score, _)) = matches.first() {
             let ambiguous = matches
                 .get(1)
-                .is_some_and(|(_, other_score)| (*score - *other_score).abs() < 0.1);
+                .is_some_and(|(_, other_score, _)| (*score - *other_score).abs() < 0.1);
             candidates.push(json!({
                 "old": old,
                 "new": new,

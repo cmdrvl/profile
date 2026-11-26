@@ -105,11 +105,13 @@ pub fn run() -> u8 {
 
 fn precheck_redaction_key(command: &Command) -> Result<(), RefusalPayload> {
     match command {
-        Command::Slice(_) | Command::Stats(_) | Command::Inspect(_) | Command::SuggestKey(_) => {
-            redaction::RedactionKey::from_env()
-                .map(|_| ())
-                .map_err(RefusalPayload::redaction_key_invalid)
-        }
+        Command::Slice(_)
+        | Command::Stats(_)
+        | Command::Inspect(_)
+        | Command::SuggestKey(_)
+        | Command::Evolve(_) => redaction::RedactionKey::from_env()
+            .map(|_| ())
+            .map_err(RefusalPayload::redaction_key_invalid),
         _ => Ok(()),
     }
 }
@@ -134,7 +136,7 @@ fn dispatch(
         },
         Command::Validate(args) => lint::validate::run(args, no_witness),
         Command::Lint(args) => lint::lint::run(args, no_witness),
-        Command::Evolve(args) => evolve::run(args, no_witness),
+        Command::Evolve(args) => evolve::run(args, no_witness, explicit),
         Command::Slice(args) => slice::run(args, no_witness, explicit, json_output),
         Command::Stats(args) => stats::stats::run(args, no_witness, explicit),
         Command::Inspect(args) => inspect::run(args, explicit),
