@@ -239,9 +239,12 @@ Blake3 hashes; request a maximum arity explicitly when needed:
 ```bash
 profile suggest-key loan_tape.csv
 profile suggest-key loan_tape.csv --max-arity 3
-# loan_id: unique=100%, nulls=0%, type=string ← recommended
-# property_id: unique=85%, nulls=0%, type=string
+# candidates[0]: column redacted:ref:c1, uniqueness 1.0, null_rate 0.0, viable (ranked first)
+# candidates[1]: column redacted:ref:c4, uniqueness 0.85, null_rate 0.0
+profile --explicit suggest-key loan_tape.csv   # prints the column names instead of refs
 ```
+
+Columns are `redacted:ref:cN` refs by default (see Header redaction); `--explicit` prints names.
 
 ### `profile lint`
 
@@ -305,7 +308,8 @@ set:
 
 ```bash
 profile stats loan_tape.csv
-# rows: 1,247 | columns: 42 | nulls: 3.2% | key candidates: loan_id, property_id
+# JSON: row_count, column_count and columns[] with id (redacted:ref:cN), type, nullable,
+# null_rate, uniqueness and key_viable; the column names appear only with --explicit
 
 profile --explicit --json stats loan_tape.csv
 # includes per-column example values
@@ -320,18 +324,26 @@ Inspect one dataset in a single zero-retention report. It combines format/dialec
     profile --json inspect loan_tape.csv
     profile --json inspect loans.xlsx --sheet loans
 
-String examples are omitted by default. Numeric min/max/quantiles and counts are structural; use the global --explicit flag only when raw examples are intentionally authorized.
+Columns carry an `id` (a `redacted:ref:cN` ref, see Header redaction); `name` appears only with `--explicit`. String examples are omitted by default. Numeric min/max/quantiles and counts are structural; use the global --explicit flag only when raw examples are intentionally authorized.
 
 ### Header redaction (`slice`, `inspect`, `stats`, `suggest-key`, `evolve`)
 
-On a messy sheet the header row can be a title banner, a methodology paragraph or an actual data row, so header text is dataset content. Without `--explicit`, these four commands never print it; a column is an `id`:
+On a messy sheet the header row can be a title banner, a methodology paragraph or an actual data row, so header text is dataset content. Without `--explicit`, `slice`, `inspect`, `stats`, `suggest-key` and `evolve` never print dataset header text on stdout or stderr; a column is an `id`:
 
 - **Ordinal refs (default):** `redacted:ref:c1`, `c2`, ... numbered in column order, never in text order. Equal header text in one output shares a ref (a banner merged across four columns is one ref repeated). Refs are not comparable across files. Output is byte-identical across runs. No hash of any header is computed.
-- **Keyed markers (opt-in):** set `PROFILE_REDACTION_KEY` (at least 16 bytes) and each id becomes `redacted:hmac-sha256:<32 hex>`, the first 128 bits of `HMAC-SHA256(key, "column" NUL header)`. The same key gives the same marker for the same header in any file (the correlation feature) and nothing is guessable without it; a key holder can test a candidate header by computing its marker. An empty or short key refuses with `E_REDACTION_KEY_INVALID` (exit 2) for these commands; it never falls back to ordinal refs. The key is never printed, never written to the witness ledger, and `profile doctor` reports only configured / not configured / unusable.
+- **Keyed markers (opt-in):** set `PROFILE_REDACTION_KEY` (at least 16 bytes) and each id becomes `redacted:hmac-sha256:<32 hex>`, the first 128 bits of `HMAC-SHA256(key, "column" NUL header)`. The same key gives the same marker for the same header in any file (the correlation feature) and nothing is guessable without it; a key holder can test a candidate header by computing its marker. An empty or short key refuses with `E_REDACTION_KEY_INVALID` (exit 2) for all five commands (with or without `--explicit`); it never falls back to ordinal refs. The key is never printed, never written to the witness ledger, and `profile doctor` reports only configured / not configured / unusable.
 - `--explicit` prints the names (`name` beside `id`; `slice` lists the real headers in `columns`). `stats --profile` keeps the profile's own column names, which are not dataset text.
 - A `slice --emit-manifest` file and `--out` CSV are artifacts you asked for and keep real headers. Refusals withhold the dataset's sheet names (`sheet_count`) and header list (`available_count`) unless `--explicit`.
 - `emit-verify-starter` / `emit-ddl` read column names from a `--stats` file, so feed them `profile --explicit stats ...` output or `stats --profile <frozen profile>`; a default (redacted) stats file now refuses instead of silently dropping every type.
-- `evolve` is covered too (see `profile evolve`). Not covered: `draft init` (writes the profile YAML with the dataset's header names, by design).
+- `evolve` redacts the new dataset's headers in `added_columns`, `renamed_candidates[].new`, `key_status.repaired[].to` and the full-view draft (see `profile evolve`); `slice` without `--out` or `--explicit` in human mode refuses `E_OUTPUT_REQUIRED` instead of printing rows (see `profile slice`).
+
+**Redaction exemptions (operator ruling, bd-c2q).** A profile and the files you ask for are authored artifacts, so these files keep the real header names and values on purpose:
+
+1. the profile YAML written by `profile draft init --out`;
+2. the CSV written by `profile slice --out` and the JSON written by `profile slice --emit-manifest`;
+3. the draft profile YAML written by `profile evolve --out`.
+
+Everything PRINTED to stdout or stderr stays redacted by default (ordinal refs, or keyed markers with `PROFILE_REDACTION_KEY`) and shows names only with `--explicit`. `draft init` and `lint` print no dataset header text on stdout; `lint` reports the profile's own column names. Not exempt and still open: the registry-ambiguity refusal text echoes raw physical headers.
 
 When a workbook has several sheets and none is chosen, `E_AMBIGUOUS_SHEET` / `E_SHEET_NOT_FOUND` carry a copy-pasteable `next_command` with the real subcommand and a shell-quoted path (`profile stats 'report (1).xlsx' --sheet 0`).
 
