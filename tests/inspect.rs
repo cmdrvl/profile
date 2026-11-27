@@ -177,6 +177,76 @@ fn inspect_default_redacts_all_numeric_statistics_canaries() {
 }
 
 #[test]
+fn inspect_quantiles_are_finite_and_correct_at_f64_extremes() {
+    let workspace = common::temp_workspace();
+    let cases = [
+        (
+            "opposite-sign-max",
+            "id,value\nneg,-1.7976931348623157e308\npos,1.7976931348623157e308\n",
+            0.0,
+            1.617923821376084e308,
+        ),
+        (
+            "same-sign-max",
+            "id,value\nlow,1.6e308\nhigh,1.7976931348623157e308\n",
+            1.6988465674311578e308,
+            1.7878084781192e308,
+        ),
+        (
+            "subnormal",
+            "id,value\nlow,5e-324\nhigh,1e-323\n",
+            1e-323,
+            1e-323,
+        ),
+        (
+            "equal-endpoints",
+            "id,value\nfirst,1.7976931348623157e308\nsecond,1.7976931348623157e308\n",
+            1.7976931348623157e308,
+            1.7976931348623157e308,
+        ),
+        (
+            "ordinary",
+            "id,value\nfirst,10\nsecond,20\nthird,30\n",
+            20.0,
+            29.0,
+        ),
+    ];
+
+    for (label, csv, expected_p50, expected_p95) in cases {
+        let dataset = workspace.path().join(format!("{label}.csv"));
+        fs::write(&dataset, csv).unwrap();
+        let process = std::process::Command::new(env!("CARGO_BIN_EXE_profile"))
+            .args(["--json", "--explicit", "--no-witness", "inspect"])
+            .arg(&dataset)
+            .output()
+            .unwrap();
+        assert!(
+            process.status.success(),
+            "{label} should succeed: {}",
+            String::from_utf8_lossy(&process.stderr)
+        );
+        let output: Value = serde_json::from_slice(&process.stdout).unwrap();
+        let numeric = &output["result"]["columns"][1]["numeric"];
+        let p50 = numeric["p50"].as_f64();
+        let p95 = numeric["p95"].as_f64();
+        assert!(
+            p50.is_some(),
+            "{label} p50 should be a finite number: {numeric}"
+        );
+        assert!(
+            p95.is_some(),
+            "{label} p95 should be a finite number: {numeric}"
+        );
+        if let (Some(p50), Some(p95)) = (p50, p95) {
+            assert!(p50.is_finite(), "{label} p50 was not finite: {p50}");
+            assert!(p95.is_finite(), "{label} p95 was not finite: {p95}");
+            assert_eq!(p50, expected_p50, "{label} p50");
+            assert_eq!(p95, expected_p95, "{label} p95");
+        }
+    }
+}
+
+#[test]
 fn inspect_human_output_redacts_numeric_summaries() {
     let workspace = common::temp_workspace();
     let dataset = workspace.path().join("numeric-canary.csv");

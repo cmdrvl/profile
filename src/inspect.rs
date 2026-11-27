@@ -197,7 +197,26 @@ fn quantile(values: &[f64], probability: f64) -> f64 {
     if lower == upper {
         values[lower]
     } else {
-        values[lower] + (values[upper] - values[lower]) * (position - lower as f64)
+        let lower_value = values[lower];
+        let upper_value = values[upper];
+        let fraction = position - lower as f64;
+        let difference = upper_value - lower_value;
+        let direct = lower_value + difference * fraction;
+
+        // Preserve the historical arithmetic whenever it is finite. For opposite-sign values,
+        // the difference can overflow even though the interpolated result is finite; scaling both
+        // endpoints also keeps subnormal differences from disappearing before interpolation.
+        if direct.is_finite() && (difference == 0.0 || (difference * fraction) != 0.0) {
+            direct
+        } else {
+            let scale = lower_value.abs().max(upper_value.abs());
+            if scale == 0.0 {
+                0.0
+            } else {
+                ((lower_value / scale) * (1.0 - fraction) + (upper_value / scale) * fraction)
+                    * scale
+            }
+        }
     }
 }
 
