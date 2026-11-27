@@ -670,11 +670,21 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
         assert!(error.contains("and 2"), "{error}");
         assert!(error.contains("redacted:ref:c1"), "{error}");
         assert!(error.contains("redacted:ref:c2"), "{error}");
+        let canonical_is_physical = raw_headers.contains(&"loan_id_number");
+        if canonical_is_physical {
+            assert!(
+                error.contains("ambiguous canonical header 'redacted:ref:c2'"),
+                "{error}"
+            );
+            assert_eq!(error.matches("redacted:ref:c2").count(), 2, "{error}");
+        } else {
+            assert!(
+                error.contains("ambiguous canonical header 'loan_id_number'"),
+                "{error}"
+            );
+        }
         let rendered = envelope.to_string();
         for raw_header in &raw_headers {
-            if *raw_header == "loan_id_number" {
-                continue;
-            }
             assert!(
                 !rendered.contains(raw_header),
                 "default leaked {raw_header}: {rendered}"
@@ -699,9 +709,6 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
         );
         assert!(human_stderr.contains("and 2"), "{human_stderr}");
         for raw_header in &raw_headers {
-            if *raw_header == "loan_id_number" {
-                continue;
-            }
             assert!(
                 !human_stderr.contains(raw_header),
                 "human default leaked {raw_header}: {human_stderr}"
@@ -726,10 +733,17 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
             keyed_error.contains("redacted:hmac-sha256:"),
             "{keyed_error}"
         );
+        if canonical_is_physical {
+            let keyed_markers = keyed_error
+                .split(|character: char| {
+                    character.is_whitespace() || matches!(character, '\'' | '(' | ')')
+                })
+                .filter(|token| token.starts_with("redacted:hmac-sha256:"))
+                .collect::<Vec<_>>();
+            assert_eq!(keyed_markers.len(), 3, "{keyed_error}");
+            assert_eq!(keyed_markers[0], keyed_markers[2], "{keyed_error}");
+        }
         for raw_header in &raw_headers {
-            if *raw_header == "loan_id_number" {
-                continue;
-            }
             assert!(!keyed_output.to_string().contains(raw_header));
         }
 

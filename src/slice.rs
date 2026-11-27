@@ -935,8 +935,18 @@ fn canonical_header_collision(
     } else {
         let first_marker = marker.mark(Kind::Column, first_raw);
         let second_marker = marker.mark(Kind::Column, second_raw);
+        // A canonical ID that is also a physical header is dataset text and must use the
+        // same marker as that column. Registry-only canonical IDs remain visible because they
+        // are profile metadata, not physical input text.
+        let canonical_display = if canonical == first_raw {
+            first_marker.as_str()
+        } else if canonical == second_raw {
+            second_marker.as_str()
+        } else {
+            canonical
+        };
         format!(
-            "ambiguous canonical header '{canonical}': physical columns {first_position} ({first_marker}) and {second_position} ({second_marker}) both resolve to it"
+            "ambiguous canonical header '{canonical_display}': physical columns {first_position} ({first_marker}) and {second_position} ({second_marker}) both resolve to it"
         )
     };
     RefusalPayload::invalid_schema_single("column_registry", message)
