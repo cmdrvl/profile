@@ -625,7 +625,9 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
         r#"[
   {"input":"CANARY_FIRST","canonical_id":"loan_id_number","canonical_type":"column_name","rule_id":"TEST_CANARY"},
   {"input":"CANARY_SECOND","canonical_id":"loan_id_number","canonical_type":"column_name","rule_id":"TEST_CANARY"},
-  {"input":"CANARY_ALIAS","canonical_id":"loan_id_number","canonical_type":"column_name","rule_id":"TEST_CANARY"}
+  {"input":"CANARY_ALIAS","canonical_id":"loan_id_number","canonical_type":"column_name","rule_id":"TEST_CANARY"},
+  {"input":"ALIAS_ONE","canonical_id":"SHARED","canonical_type":"column_name","rule_id":"TEST_CANARY"},
+  {"input":"ALIAS_TWO","canonical_id":"SHARED","canonical_type":"column_name","rule_id":"TEST_CANARY"}
 ]"#,
     )
     .expect("write synthetic collision aliases");
@@ -635,16 +637,52 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
         (
             "canary_alias_alias_collision.csv",
             "CANARY_FIRST,CANARY_SECOND,OTHER\n1001,1001B,x\n",
-            ["CANARY_FIRST", "CANARY_SECOND"],
+            "loan_id_number",
+            vec!["CANARY_FIRST", "CANARY_SECOND", "OTHER"],
+            1,
+            2,
         ),
         (
             "canary_alias_canonical_collision.csv",
             "CANARY_ALIAS,loan_id_number,OTHER\n1001,1001B,x\n",
-            ["CANARY_ALIAS", "loan_id_number"],
+            "loan_id_number",
+            vec!["CANARY_ALIAS", "loan_id_number", "OTHER"],
+            1,
+            2,
+        ),
+        (
+            "three_column_canonical_collision.csv",
+            "ALIAS_ONE,ALIAS_TWO,SHARED\n1001,1001B,x\n",
+            "SHARED",
+            vec!["ALIAS_ONE", "ALIAS_TWO", "SHARED"],
+            1,
+            2,
+        ),
+        (
+            "three_column_last_canonical_collision.csv",
+            "UNRELATED_A,ALIAS_ONE,ALIAS_TWO,UNRELATED_B,SHARED\n1001,a,b,c,x\n",
+            "SHARED",
+            vec![
+                "UNRELATED_A",
+                "ALIAS_ONE",
+                "ALIAS_TWO",
+                "UNRELATED_B",
+                "SHARED",
+            ],
+            2,
+            3,
+        ),
+        (
+            "three_column_duplicate_canonical_collision.csv",
+            "ALIAS_ONE,ALIAS_TWO,SHARED,SHARED\n1001,1001B,x,x\n",
+            "SHARED",
+            vec!["ALIAS_ONE", "ALIAS_TWO", "SHARED", "SHARED"],
+            1,
+            2,
         ),
     ];
 
-    for (file_name, csv, raw_headers) in cases {
+    for (file_name, csv, canonical, raw_headers, first_position, second_position) in cases {
         let input = workspace.path().join(file_name);
         fs::write(&input, csv).expect("write collision source CSV");
         let assert = profile_cmd()
@@ -666,20 +704,42 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
         let error = envelope["result"]["detail"]["errors"][0]["error"]
             .as_str()
             .expect("collision should include error detail");
-        assert!(error.contains("physical columns 1"), "{error}");
-        assert!(error.contains("and 2"), "{error}");
-        assert!(error.contains("redacted:ref:c1"), "{error}");
-        assert!(error.contains("redacted:ref:c2"), "{error}");
-        let canonical_is_physical = raw_headers.contains(&"loan_id_number");
+        assert!(
+            error.contains(&format!("physical columns {first_position}")),
+            "{error}"
+        );
+        assert!(error.contains(&format!("and {second_position}")), "{error}");
+        let marker_ordinal = |position: usize| {
+            let mut distinct = Vec::new();
+            for header in raw_headers.iter().take(position) {
+                if !distinct.contains(header) {
+                    distinct.push(*header);
+                }
+            }
+            distinct
+                .iter()
+                .position(|header| *header == raw_headers[position - 1])
+                .expect("header marker should have been assigned")
+                + 1
+        };
+        let first_marker = format!("redacted:ref:c{}", marker_ordinal(first_position));
+        let second_marker = format!("redacted:ref:c{}", marker_ordinal(second_position));
+        assert!(error.contains(&first_marker), "{error}");
+        assert!(error.contains(&second_marker), "{error}");
+        let canonical_position = raw_headers.iter().position(|header| *header == canonical);
+        let canonical_is_physical = canonical_position.is_some();
         if canonical_is_physical {
+            let canonical_marker = format!(
+                "redacted:ref:c{}",
+                marker_ordinal(canonical_position.expect("canonical position") + 1)
+            );
             assert!(
-                error.contains("ambiguous canonical header 'redacted:ref:c2'"),
+                error.contains(&format!("ambiguous canonical header '{canonical_marker}'")),
                 "{error}"
             );
-            assert_eq!(error.matches("redacted:ref:c2").count(), 2, "{error}");
         } else {
             assert!(
-                error.contains("ambiguous canonical header 'loan_id_number'"),
+                error.contains(&format!("ambiguous canonical header '{canonical}'")),
                 "{error}"
             );
         }
@@ -704,10 +764,13 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
         let human_stderr = String::from_utf8_lossy(&human.get_output().stderr).into_owned();
         common::assert_refusal_exit!(human);
         assert!(
-            human_stderr.contains("physical columns 1"),
+            human_stderr.contains(&format!("physical columns {first_position}")),
             "{human_stderr}"
         );
-        assert!(human_stderr.contains("and 2"), "{human_stderr}");
+        assert!(
+            human_stderr.contains(&format!("and {second_position}")),
+            "{human_stderr}"
+        );
         for raw_header in &raw_headers {
             assert!(
                 !human_stderr.contains(raw_header),
@@ -734,14 +797,24 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
             "{keyed_error}"
         );
         if canonical_is_physical {
-            let keyed_markers = keyed_error
-                .split(|character: char| {
-                    character.is_whitespace() || matches!(character, '\'' | '(' | ')')
-                })
-                .filter(|token| token.starts_with("redacted:hmac-sha256:"))
-                .collect::<Vec<_>>();
-            assert_eq!(keyed_markers.len(), 3, "{keyed_error}");
-            assert_eq!(keyed_markers[0], keyed_markers[2], "{keyed_error}");
+            let reference_input = workspace
+                .path()
+                .join(format!("keyed-reference-{file_name}"));
+            fs::write(&reference_input, csv).expect("write keyed marker reference CSV");
+            let reference = profile_cmd()
+                .env("PROFILE_REDACTION_KEY", "0123456789abcdef")
+                .arg("--json")
+                .arg("--no-witness")
+                .arg("slice")
+                .arg(&reference_input)
+                .assert();
+            let reference_output = parse_stdout_json(&reference);
+            common::assert_success_exit!(reference);
+            let canonical_marker = reference_output["result"]["columns"]
+                [canonical_position.expect("canonical position")]
+            .as_str()
+            .expect("keyed reference should include canonical marker");
+            assert!(keyed_error.contains(canonical_marker), "{keyed_error}");
         }
         for raw_header in &raw_headers {
             assert!(!keyed_output.to_string().contains(raw_header));
@@ -772,8 +845,14 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
             .assert();
         let explicit_output = parse_stdout_json(&explicit);
         common::assert_refusal_exit!(explicit);
-        for raw_header in &raw_headers {
-            assert!(explicit_output.to_string().contains(raw_header));
+        for position in [first_position, second_position] {
+            assert!(
+                explicit_output
+                    .to_string()
+                    .contains(raw_headers[position - 1]),
+                "explicit output omitted colliding header: {}",
+                raw_headers[position - 1]
+            );
         }
     }
 }

@@ -878,17 +878,20 @@ fn canonicalize_slice_headers(
         if let Some((first_position, first_raw)) = canonical_to_raw.get(&canonical) {
             if first_raw != raw {
                 let mut marker = Marker::for_output(explicit)?;
-                // Keep collision markers aligned with the existing file-order ordinal contract
-                // even when columns before the collision do not appear in the refusal itself.
-                for previous_raw in headers.iter().take(index + 1) {
-                    marker.mark(Kind::Column, previous_raw);
+                // Keep collision markers aligned with the existing file-order ordinal contract,
+                // including a physical header later in the file that equals the canonical ID.
+                for physical_header in headers {
+                    marker.mark(Kind::Column, physical_header);
                 }
                 return Err(canonical_header_collision(
-                    &canonical,
-                    *first_position,
-                    first_raw,
-                    index + 1,
-                    raw,
+                    CanonicalHeaderCollision {
+                        canonical: &canonical,
+                        first_position: *first_position,
+                        first_raw,
+                        second_position: index + 1,
+                        second_raw: raw,
+                        physical_headers: headers,
+                    },
                     explicit,
                     &mut marker,
                 ));
@@ -918,15 +921,28 @@ fn canonicalize_slice_headers(
     }))
 }
 
-fn canonical_header_collision(
-    canonical: &str,
+struct CanonicalHeaderCollision<'a> {
+    canonical: &'a str,
     first_position: usize,
-    first_raw: &str,
+    first_raw: &'a str,
     second_position: usize,
-    second_raw: &str,
+    second_raw: &'a str,
+    physical_headers: &'a [String],
+}
+
+fn canonical_header_collision(
+    collision: CanonicalHeaderCollision<'_>,
     explicit: bool,
     marker: &mut Marker,
 ) -> RefusalPayload {
+    let CanonicalHeaderCollision {
+        canonical,
+        first_position,
+        first_raw,
+        second_position,
+        second_raw,
+        physical_headers,
+    } = collision;
     let message = if explicit {
         // Keep the explicit refusal byte-for-byte compatible with profile 0.12.1.
         format!(
@@ -935,16 +951,14 @@ fn canonical_header_collision(
     } else {
         let first_marker = marker.mark(Kind::Column, first_raw);
         let second_marker = marker.mark(Kind::Column, second_raw);
-        // A canonical ID that is also a physical header is dataset text and must use the
-        // same marker as that column. Registry-only canonical IDs remain visible because they
-        // are profile metadata, not physical input text.
-        let canonical_display = if canonical == first_raw {
-            first_marker.as_str()
-        } else if canonical == second_raw {
-            second_marker.as_str()
-        } else {
-            canonical
-        };
+        // A canonical ID that is also any physical header is dataset text and must use the same
+        // marker as that column. Registry-only canonical IDs remain visible because they are
+        // profile metadata, not physical input text.
+        let canonical_display = physical_headers
+            .iter()
+            .find(|physical_header| physical_header.as_str() == canonical)
+            .map(|physical_header| marker.mark(Kind::Column, physical_header))
+            .unwrap_or_else(|| canonical.to_owned());
         format!(
             "ambiguous canonical header '{canonical_display}': physical columns {first_position} ({first_marker}) and {second_position} ({second_marker}) both resolve to it"
         )
