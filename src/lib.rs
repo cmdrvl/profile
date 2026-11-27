@@ -151,15 +151,28 @@ fn dispatch(
         Command::Push(args) => network::push::run(args, no_witness),
         Command::Pull(args) => network::pull::run(args, no_witness).map(CommandOutput::success),
         Command::Witness(WitnessArgs { command }) => match command {
-            WitnessCommand::Query(args) => {
-                witness::query::run_query(args).map(CommandOutput::success)
-            }
-            WitnessCommand::Last(args) => {
-                witness::query::run_last(args).map(CommandOutput::success)
-            }
-            WitnessCommand::Count(args) => {
-                witness::query::run_count(args).map(CommandOutput::success)
-            }
+            WitnessCommand::Query(args) => witness::query::run_query(args).map(|result| {
+                let bare_result = result
+                    .get("records")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new()));
+                CommandOutput::success(result).with_bare_json_result(bare_result)
+            }),
+            WitnessCommand::Last(args) => witness::query::run_last(args).map(|result| {
+                let records = result
+                    .get("records")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                let bare_result = if args.count == 1 {
+                    records.into_iter().next().unwrap_or(Value::Null)
+                } else {
+                    Value::Array(records)
+                };
+                CommandOutput::success(result).with_bare_json_result(bare_result)
+            }),
+            WitnessCommand::Count(args) => witness::query::run_count(args)
+                .map(|result| CommandOutput::success(result.clone()).with_bare_json_result(result)),
         },
     }
 }

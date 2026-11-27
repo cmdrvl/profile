@@ -10,6 +10,9 @@ const ENVELOPE_VERSION: &str = "profile.v0";
 #[derive(Debug, Clone)]
 pub struct CommandOutput {
     pub result: Value,
+    /// Optional raw JSON result for a command whose public JSON contract is
+    /// intentionally outside the normal profile.v0 envelope.
+    pub bare_json_result: Option<Value>,
     pub profile_ref: Option<ProfileRef>,
     pub witness_id: Option<String>,
 }
@@ -18,9 +21,15 @@ impl CommandOutput {
     pub fn success(result: Value) -> Self {
         Self {
             result,
+            bare_json_result: None,
             profile_ref: None,
             witness_id: None,
         }
+    }
+
+    pub fn with_bare_json_result(mut self, result: Value) -> Self {
+        self.bare_json_result = Some(result);
+        self
     }
 
     pub fn with_profile_ref(mut self, profile_ref: Option<ProfileRef>) -> Self {
@@ -111,6 +120,22 @@ impl OutputEnvelope {
 
 /// Emit JSON output with unified envelope format
 pub fn emit(subcommand: &str, result: Result<CommandOutput, RefusalPayload>) -> u8 {
+    if let Ok(output) = &result
+        && subcommand.starts_with("witness ")
+        && let Some(bare_result) = &output.bare_json_result
+    {
+        match serde_json::to_string(bare_result) {
+            Ok(json) => {
+                println!("{json}");
+                return EXIT_SUCCESS;
+            }
+            Err(_) => {
+                eprintln!("Failed to serialize witness output");
+                return EXIT_REFUSAL;
+            }
+        }
+    }
+
     let envelope = match result {
         Ok(output) => {
             if is_issues_found(subcommand, &output.result) {

@@ -11,7 +11,7 @@ use clap::{Args, ColorChoice, Parser, Subcommand, ValueEnum};
     version
 )]
 pub struct Cli {
-    /// Wrap output in the unified JSON envelope
+    /// Wrap output in the unified JSON envelope; witness reads emit bare family JSON
     #[arg(long, global = true)]
     pub json: bool,
 

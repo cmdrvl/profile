@@ -19,7 +19,7 @@
   "arguments": [],
 
   "options": [
-    { "name": "json", "flag": "--json", "type": "boolean", "description": "Emit machine-readable output" },
+    { "name": "json", "flag": "--json", "type": "boolean", "description": "Emit machine-readable output; successful witness reads use bare family JSON, while normal commands and refusals use profile.v0" },
     { "name": "robot-triage", "flag": "--robot-triage", "type": "boolean", "description": "Legacy one-call machine triage" },
     {
       "name": "explicit",
@@ -56,7 +56,7 @@
     { "name": "diff", "description": "Diff two profile versions" },
     { "name": "push", "description": "Publish a frozen profile to data-fabric (deferred in v0.1)" },
     { "name": "pull", "description": "Fetch a frozen profile by ID from data-fabric (deferred in v0.1)" },
-    { "name": "witness", "description": "Query the witness ledger" }
+    { "name": "witness", "description": "Read the witness ledger; --json query emits a bare array, count emits {count:n}, and last emits a bare record/null or an array with --count other than 1; refusals use profile.v0" }
   ],
 
   "exit_codes": {

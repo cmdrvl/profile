@@ -505,6 +505,9 @@ With `--json`, refusals are emitted in the unified output envelope (`outcome=REF
 - `--no-witness` disables witness writes without changing domain outcome or exit semantics
 - Ledger path: `$EPISTEMIC_WITNESS` or `~/.cmdrvl/state/witness/witness.jsonl`; legacy `~/.epistemic/witness.jsonl` is copied on first default use.
 - Witness append failures warn on stderr and do not change primary command outcome/exit code
+- **Breaking output change (bd-rle):** `--json witness query` now emits a bare array of records, `--json witness count` emits bare `{"count":n}`, and `--json witness last` emits the newest bare record or `null` by default. `witness last --count N` emits a bare array for every `N` other than `1` (including `N=0`). Empty or absent ledgers are successful and emit `[]`, `{"count":0}`, or `null`. Refusals remain the `profile.v0` envelope; human witness output is unchanged.
+
+The global `--json` flag uses the `profile.v0` envelope for normal commands. The three successful witness read commands are the deliberate exception so they match the shared family format; their refusal output remains enveloped.
 
 ---
 

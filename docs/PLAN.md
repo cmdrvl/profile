@@ -234,7 +234,7 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 
 ### Output modes
 
-`profile` is a subcommand tool that mixes modes. All `--json` output uses the unified output envelope (see [Output Envelope](#output-envelope-all---json-responses)):
+`profile` is a subcommand tool that mixes modes. Normal `--json` output uses the unified output envelope (see [Output Envelope](#output-envelope-all-non-witness---json-responses)). Successful witness reads are the deliberate family-format exception described below; witness refusals still use the envelope:
 
 | Subcommand | Output mode | `--json` |
 |------------|-------------|----------|
@@ -248,14 +248,14 @@ When implemented, network subcommands (`push`/`pull`) return `0` on success and 
 | `inspect` | Single-file structural report | Envelope with structural metadata, null `numeric.min`/`max`/`p50`/`p95` by default, and no raw strings; `--explicit` restores exact summaries and examples |
 | `lint`, `validate` | Report (human default) | Envelope with subcommand-specific `result` |
 | `list`, `show`, `diff` | Report (human default) | Envelope with subcommand-specific `result` |
-| `witness` | Report (human default) | N/A |
+| `witness` | Report (human default) | Successful `query` is a bare record array; `count` is bare `{"count":n}`; `last` is a bare record or `null` for the default `--count 1`, and a bare array for `--count N` other than `1` (including `0`). Empty/absent reads exit 0. Refusals remain the `profile.v0` envelope. |
 | `push`, `pull` | Status message (deferred in v0.1) | N/A |
 
 ---
 
-## Output Envelope (all `--json` responses)
+## Output Envelope (all non-witness `--json` responses)
 
-Every `--json` invocation wraps its result in a uniform envelope. This is the single schema an agent needs to parse any `profile` output:
+Every non-witness `--json` invocation, and every witness refusal, wraps its result in a uniform envelope. This is the single schema an agent needs to parse normal `profile` output:
 
 ```json
 {
@@ -269,7 +269,7 @@ Every `--json` invocation wraps its result in a uniform envelope. This is the si
 }
 ```
 
-The outer shape is always the same. `outcome` is always one of `SUCCESS`, `ISSUES_FOUND`, `REFUSAL`. `result` varies by subcommand. `profile_ref` is populated when a profile was consumed (e.g., `stats --profile`, `lint`); null otherwise. `witness_id` links to the witness record if one was written; null if `--no-witness` or non-witnessed subcommand.
+For these enveloped responses, the outer shape is always the same. `outcome` is always one of `SUCCESS`, `ISSUES_FOUND`, `REFUSAL`. `result` varies by subcommand. `profile_ref` is populated when a profile was consumed (e.g., `stats --profile`, `lint`); null otherwise. `witness_id` links to the witness record if one was written; null if `--no-witness` or non-witnessed subcommand. Successful witness reads are the documented bare-JSON exception below.
 
 For refusals, the `result` field contains the refusal detail (the existing refusal envelope's `refusal` object moves here — the outer envelope is the same shape regardless of outcome):
 
@@ -352,7 +352,20 @@ The refusal system was already half of this design. Completing it into a univers
 - **Witness linkage is inline.** The agent doesn't need to separately query the witness ledger to connect an output to its audit record — `witness_id` is right there.
 - **Profile lineage is inline.** When a subcommand consumed a profile, `profile_ref` records exactly which one, closing the traceability chain without requiring the agent to track it externally.
 
-Human output (without `--json`) remains free-form and human-optimized. The envelope is JSON-only.
+Human output (without `--json`) remains free-form and human-optimized. The envelope is JSON-only; witness human output is unchanged by the family-format exception.
+
+### Witness read JSON (breaking output change)
+
+Successful witness reads intentionally do not use the envelope so profile matches the shared family contract:
+
+```text
+profile --json witness query             -> [record, ...]
+profile --json witness count             -> {"count": n}
+profile --json witness last              -> record | null
+profile --json witness last --count N    -> [record, ...] when N != 1
+```
+
+Absent and empty ledgers return exit `0` with `[]`, `{"count":0}`, or `null`. `--count 0` returns exit `0` with `[]`. The record values, newest-first order, query filters and limits are unchanged. An unreadable or malformed ledger remains exit `2` with the normal `profile.v0` refusal envelope. This is a breaking machine-output change for consumers that previously parsed the `result.records` wrapper; non-witness JSON and all human output are unchanged.
 
 ---
 
@@ -582,7 +595,7 @@ E_EMPTY:
   { "path": "tape.csv", "reason": "no header row | no data rows" }
 ```
 
-Refusals are emitted inside the unified output envelope (see [Output Envelope](#output-envelope-all---json-responses)) with `outcome: "REFUSAL"` and the refusal detail in the `result` field. Without `--json`, refusals are printed as human-readable error messages to stderr with the refusal code in brackets (e.g., `[E_COLUMN_NOT_FOUND] Profile references columns not present in dataset`).
+Refusals are emitted inside the unified output envelope (see [Output Envelope](#output-envelope-all-non-witness---json-responses)) with `outcome: "REFUSAL"` and the refusal detail in the `result` field. Without `--json`, refusals are printed as human-readable error messages to stderr with the refusal code in brackets (e.g., `[E_COLUMN_NOT_FOUND] Profile references columns not present in dataset`).
 
 ---
 
@@ -648,6 +661,8 @@ Possible outcomes: `SUCCESS` (exit 0), `ISSUES_FOUND` (exit 1, e.g., lint), `REF
 
 **Ledger location:** `~/.cmdrvl/state/witness/witness.jsonl` unless `EPISTEMIC_WITNESS` is set. Legacy `~/.epistemic/witness.jsonl` is copied on first default use. The ledger is append-only, one JSON object per line. Each record's `prev` field contains the `id` of the preceding record (or `null` for the first entry), forming a hash chain. The `witness query` subcommand reads this file.
 
+Successful witness reads with `--json` use the shared family shapes rather than the normal profile.v0 envelope: `query` returns a newest-first array, `count` returns `{"count":n}`, and `last` returns a record or `null` for the default `--count 1`, or an array for every other count including `0`. Absent and empty ledgers are exit-0 `[]`, `{"count":0}`, and `null`; malformed or unreadable ledgers remain exit-2 refusal envelopes. This is a breaking machine-output change; human witness output and witness record content are unchanged.
+
 Per-subcommand `params` shapes:
 
 ```
@@ -659,7 +674,7 @@ stats:       { "subcommand": "stats", "profile": "loan_tape.v0" | null }
 suggest-key: { "subcommand": "suggest-key", "top": 5 }
 ```
 
-The `output_hash` is BLAKE3 of the primary output. For artifact subcommands (`freeze`), this is the emitted file content. For report subcommands (`stats`, `suggest-key`, `lint`, `validate`, `slice`), this is the JSON representation of the redacted result (regardless of whether `--json` was passed) — this ensures the witness hash is stable and independent of output format. `inputs` lists the files consumed by the subcommand. For `lint`, inputs include both the profile and the dataset. For `slice`, inputs include the dataset and profile path when one is consumed.
+The `output_hash` is BLAKE3 of the primary output. For artifact subcommands (`freeze`), this is the emitted file content. For report subcommands (`stats`, `suggest-key`, `lint`, `validate`, `slice`), this is the JSON representation of the redacted result (regardless of whether `--json` was passed) — this ensures the witness hash is stable and independent of output format. `inputs` lists the files consumed by the subcommand. For `lint`, inputs include both the profile and the dataset. For `slice`, inputs include the dataset and profile path when one is consumed. Witness read output itself is not a witnessed operation and does not change the record content.
 
 ---
 
@@ -1158,7 +1173,7 @@ fn main() -> std::process::ExitCode {
     { "name": "diff", "description": "Diff two profile versions" },
     { "name": "emit-verify-starter", "description": "Emit starter verify rules from a frozen profile" },
     { "name": "emit-ddl", "description": "Emit deterministic Postgres/Snowflake DDL from a frozen profile" },
-    { "name": "witness", "description": "Query the witness ledger" }
+    { "name": "witness", "description": "Read the witness ledger with bare family JSON for successful --json reads; refusals use profile.v0" }
   ],
 
   "exit_codes": {
@@ -1225,7 +1240,7 @@ fn main() -> std::process::ExitCode {
 - **Witness tests:** witness record appended for freeze/lint/validate/stats/suggest-key
 - **Canonicalization tests:** same profile content → same SHA256 regardless of field order in source YAML
 - **Exit code tests:** 0 success, 1 domain-negative, 2 refusal
-- **Envelope tests:** every `--json` subcommand returns a valid envelope; `outcome` matches exit code; `result` matches per-subcommand schema; `witness_id` populated when expected; `profile_ref` populated when a profile was consumed
+- **Envelope tests:** every non-witness `--json` subcommand and every refusal returns a valid envelope; witness read tests pin the bare family shapes; `outcome` matches exit code; `result` matches per-subcommand schema; `witness_id` populated when expected; `profile_ref` populated when a profile was consumed
 - **Golden file tests:** known CSV through `draft init` produces exact expected draft
 
 Deferred test tracks:
