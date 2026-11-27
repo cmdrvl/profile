@@ -565,7 +565,7 @@ Ensure the profile file is committed and the path is correct. Profiles are plain
 | **No auto-update** | Profile doesn't auto-detect schema changes — use `lint` to catch drift |
 | **Registry paths are local** | Profiles can reference local column registries, but registry distribution/resolution is still path-based in v0 |
 | **Network publish is opt-in** | `push`/`pull` data-fabric wrappers exist only in a build with the `network` Cargo feature (`cargo install profile --features network`). The default build has no HTTP or TLS crates and `push`/`pull` refuse `E_NETWORK_DISABLED` (exit 2) |
-| **Shipped (0.12.0)** | The commands above are implemented and tested: draft, validate, lint, evolve, freeze, slice, stats, inspect, suggest-key, diff, show, list, projections (`emit-verify-starter`, `emit-ddl`, `emit-discovery`), witness queries, and `doctor`. Default output redacts dataset header text and refuses raw CSV on stdout (see Header redaction and `profile slice`) |
+| **Shipped (0.13.0)** | The commands above are implemented and tested: draft, validate, lint, evolve, freeze, slice, stats, inspect, suggest-key, diff, show, list, projections (`emit-verify-starter`, `emit-ddl`, `emit-discovery`), witness queries, and `doctor`. Default output redacts dataset header text and refuses raw CSV on stdout (see Header redaction and `profile slice`) |
 
 ---
 
@@ -609,7 +609,7 @@ For the full toolchain guide, see the [Agent Operator Guide](https://github.com/
 
 ## Spec and Development
 
-This README describes the behavior of the released binary (profile 0.12.0); the design notes are in `docs/PLAN.md`.
+This README describes the behavior of the released binary (profile 0.13.0); the design notes are in `docs/PLAN.md`.
 
 ```bash
 cargo fmt --check
