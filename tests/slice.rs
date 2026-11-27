@@ -618,22 +618,33 @@ fn slice_applies_registry_headers_after_pre_parse_cleanup() {
 fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
     let workspace = temp_workspace();
     copy_annex_registry(workspace.path());
+    fs::write(
+        workspace
+            .path()
+            .join("registries/annex_columns_v0/aliases.json"),
+        r#"[
+  {"input":"CANARY_FIRST","canonical_id":"loan_id_number","canonical_type":"column_name","rule_id":"TEST_CANARY"},
+  {"input":"CANARY_SECOND","canonical_id":"loan_id_number","canonical_type":"column_name","rule_id":"TEST_CANARY"},
+  {"input":"CANARY_ALIAS","canonical_id":"loan_id_number","canonical_type":"column_name","rule_id":"TEST_CANARY"}
+]"#,
+    )
+    .expect("write synthetic collision aliases");
     let draft = write_registry_draft(workspace.path(), None);
     let frozen = freeze_registry_draft(workspace.path(), &draft, "collision.frozen.yaml");
     let cases = [
         (
-            "alias_alias_collision.csv",
-            "Loan Number,Loan ID Number,Other\n1001,1001B,x\n",
-            "Loan ID Number",
+            "canary_alias_alias_collision.csv",
+            "CANARY_FIRST,CANARY_SECOND,OTHER\n1001,1001B,x\n",
+            ["CANARY_FIRST", "CANARY_SECOND"],
         ),
         (
-            "alias_canonical_collision.csv",
-            "Loan Number,loan_id_number,Other\n1001,1001B,x\n",
-            "loan_id_number",
+            "canary_alias_canonical_collision.csv",
+            "CANARY_ALIAS,loan_id_number,OTHER\n1001,1001B,x\n",
+            ["CANARY_ALIAS", "loan_id_number"],
         ),
     ];
 
-    for (file_name, csv, expected_second_header) in cases {
+    for (file_name, csv, raw_headers) in cases {
         let input = workspace.path().join(file_name);
         fs::write(&input, csv).expect("write collision source CSV");
         let assert = profile_cmd()
@@ -655,9 +666,101 @@ fn slice_refuses_canonical_header_collisions_in_registry_materialization() {
         let error = envelope["result"]["detail"]["errors"][0]["error"]
             .as_str()
             .expect("collision should include error detail");
-        assert!(error.contains("loan_id_number"), "{error}");
-        assert!(error.contains("Loan Number"), "{error}");
-        assert!(error.contains(expected_second_header), "{error}");
+        assert!(error.contains("physical columns 1"), "{error}");
+        assert!(error.contains("and 2"), "{error}");
+        assert!(error.contains("redacted:ref:c1"), "{error}");
+        assert!(error.contains("redacted:ref:c2"), "{error}");
+        let rendered = envelope.to_string();
+        for raw_header in &raw_headers {
+            if *raw_header == "loan_id_number" {
+                continue;
+            }
+            assert!(
+                !rendered.contains(raw_header),
+                "default leaked {raw_header}: {rendered}"
+            );
+        }
+
+        let output = workspace.path().join("collision-output.csv");
+        let human = profile_cmd()
+            .arg("slice")
+            .arg(&input)
+            .arg("--profile-path")
+            .arg(&frozen)
+            .arg("--out")
+            .arg(&output)
+            .arg("--no-witness")
+            .assert();
+        let human_stderr = String::from_utf8_lossy(&human.get_output().stderr).into_owned();
+        common::assert_refusal_exit!(human);
+        assert!(
+            human_stderr.contains("physical columns 1"),
+            "{human_stderr}"
+        );
+        assert!(human_stderr.contains("and 2"), "{human_stderr}");
+        for raw_header in &raw_headers {
+            if *raw_header == "loan_id_number" {
+                continue;
+            }
+            assert!(
+                !human_stderr.contains(raw_header),
+                "human default leaked {raw_header}: {human_stderr}"
+            );
+        }
+
+        let keyed = profile_cmd()
+            .env("PROFILE_REDACTION_KEY", "0123456789abcdef")
+            .arg("--json")
+            .arg("--no-witness")
+            .arg("slice")
+            .arg(&input)
+            .arg("--profile-path")
+            .arg(&frozen)
+            .assert();
+        let keyed_output = parse_stdout_json(&keyed);
+        common::assert_refusal_exit!(keyed);
+        let keyed_error = keyed_output["result"]["detail"]["errors"][0]["error"]
+            .as_str()
+            .expect("keyed collision should include error detail");
+        assert!(
+            keyed_error.contains("redacted:hmac-sha256:"),
+            "{keyed_error}"
+        );
+        for raw_header in &raw_headers {
+            if *raw_header == "loan_id_number" {
+                continue;
+            }
+            assert!(!keyed_output.to_string().contains(raw_header));
+        }
+
+        let ledger = workspace.path().join(format!("{file_name}.jsonl"));
+        let witnessed = profile_cmd()
+            .env("EPISTEMIC_WITNESS", &ledger)
+            .arg("--json")
+            .arg("slice")
+            .arg(&input)
+            .arg("--profile-path")
+            .arg(&frozen)
+            .assert();
+        common::assert_refusal_exit!(witnessed);
+        assert!(
+            !ledger.exists(),
+            "refusal should not append a witness record"
+        );
+
+        let explicit = profile_cmd()
+            .arg("--explicit")
+            .arg("--json")
+            .arg("slice")
+            .arg(&input)
+            .arg("--profile-path")
+            .arg(&frozen)
+            .assert();
+        let explicit_output = parse_stdout_json(&explicit);
+        common::assert_refusal_exit!(explicit);
+        for raw_header in &raw_headers {
+            assert!(explicit_output.to_string().contains(raw_header));
+        }
     }
 }
 

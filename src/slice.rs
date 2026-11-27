@@ -87,7 +87,7 @@ pub fn run(
     let plan = build_plan(&directives)?;
     let mut slice = build_slice(&rows, &plan, &directives)?;
     let canonicalization =
-        canonicalize_slice_headers(profile_path.as_deref(), profile, &slice.headers)?;
+        canonicalize_slice_headers(profile_path.as_deref(), profile, &slice.headers, explicit)?;
     if let Some(canonicalization) = canonicalization.as_ref() {
         slice.headers = canonicalization.headers.clone();
     }
@@ -846,6 +846,7 @@ fn canonicalize_slice_headers(
     profile_path: Option<&Path>,
     profile: Option<&Profile>,
     headers: &[String],
+    explicit: bool,
 ) -> Result<Option<CanonicalHeaderMaterialization>, RefusalPayload> {
     let Some(profile) = profile else {
         return Ok(None);
@@ -866,7 +867,7 @@ fn canonicalize_slice_headers(
         .clone()
         .map(Ok)
         .unwrap_or_else(|| registry_content_hash(&registry_dir))?;
-    let mut canonical_to_raw: HashMap<String, String> = HashMap::new();
+    let mut canonical_to_raw: HashMap<String, (usize, String)> = HashMap::new();
     let mut unmapped_seen = HashSet::new();
     let mut output_headers = Vec::with_capacity(headers.len());
     let mut mapping = Vec::with_capacity(headers.len());
@@ -874,12 +875,26 @@ fn canonicalize_slice_headers(
 
     for (index, raw) in headers.iter().enumerate() {
         let canonical = aliases.get(raw).cloned().unwrap_or_else(|| raw.to_owned());
-        if let Some(first_raw) = canonical_to_raw.get(&canonical) {
+        if let Some((first_position, first_raw)) = canonical_to_raw.get(&canonical) {
             if first_raw != raw {
-                return Err(canonical_header_collision(&canonical, first_raw, raw));
+                let mut marker = Marker::for_output(explicit)?;
+                // Keep collision markers aligned with the existing file-order ordinal contract
+                // even when columns before the collision do not appear in the refusal itself.
+                for previous_raw in headers.iter().take(index + 1) {
+                    marker.mark(Kind::Column, previous_raw);
+                }
+                return Err(canonical_header_collision(
+                    &canonical,
+                    *first_position,
+                    first_raw,
+                    index + 1,
+                    raw,
+                    explicit,
+                    &mut marker,
+                ));
             }
         } else {
-            canonical_to_raw.insert(canonical.clone(), raw.clone());
+            canonical_to_raw.insert(canonical.clone(), (index + 1, raw.clone()));
         }
 
         let mapped = aliases.contains_key(raw);
@@ -905,15 +920,26 @@ fn canonicalize_slice_headers(
 
 fn canonical_header_collision(
     canonical: &str,
+    first_position: usize,
     first_raw: &str,
+    second_position: usize,
     second_raw: &str,
+    explicit: bool,
+    marker: &mut Marker,
 ) -> RefusalPayload {
-    RefusalPayload::invalid_schema_single(
-        "column_registry",
+    let message = if explicit {
+        // Keep the explicit refusal byte-for-byte compatible with profile 0.12.1.
         format!(
             "ambiguous canonical header '{canonical}': physical headers '{first_raw}' and '{second_raw}' both resolve to it"
-        ),
-    )
+        )
+    } else {
+        let first_marker = marker.mark(Kind::Column, first_raw);
+        let second_marker = marker.mark(Kind::Column, second_raw);
+        format!(
+            "ambiguous canonical header '{canonical}': physical columns {first_position} ({first_marker}) and {second_position} ({second_marker}) both resolve to it"
+        )
+    };
+    RefusalPayload::invalid_schema_single("column_registry", message)
 }
 
 fn canonical_header_summary(canonicalization: Option<&CanonicalHeaderMaterialization>) -> Value {

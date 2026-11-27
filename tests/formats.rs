@@ -185,6 +185,68 @@ fn slice_output_csv_is_identical_for_every_container() {
     }
 }
 
+#[test]
+fn slice_canonical_header_collision_redacts_all_container_headers() {
+    let dir = temp_workspace();
+    let registry = dir.path().join("registries/collision");
+    fs::create_dir_all(&registry).unwrap();
+    fs::copy(
+        fixture_path("registries/annex_columns_v0/registry.json"),
+        registry.join("registry.json"),
+    )
+    .unwrap();
+    fs::write(
+        registry.join("aliases.json"),
+        r#"[
+  {"input":"loan_id","canonical_id":"shared_id","canonical_type":"column_name","rule_id":"TEST_CANARY"},
+  {"input":"region","canonical_id":"shared_id","canonical_type":"column_name","rule_id":"TEST_CANARY"}
+]"#,
+    )
+    .unwrap();
+    let draft = dir.path().join("collision.draft.yaml");
+    fs::write(
+        &draft,
+        "schema_version: 1\nstatus: draft\nformat: csv\ncolumn_registry: registries/collision\nkey:\n- shared_id\ninclude_columns:\n- shared_id\n",
+    )
+    .unwrap();
+    let frozen = dir.path().join("collision.frozen.yaml");
+    let frozen_assert = profile_cmd()
+        .arg("freeze")
+        .arg(&draft)
+        .arg("--family")
+        .arg("csv.loan_tape.core")
+        .arg("--version")
+        .arg("0")
+        .arg("--out")
+        .arg(&frozen)
+        .arg("--no-witness")
+        .assert();
+    common::assert_success_exit!(frozen_assert);
+    let frozen = frozen.to_str().unwrap();
+
+    for ext in EXTS {
+        let input = fx(&format!("old.{ext}"));
+        let (code, output) = run(&["slice", &input, "--profile-path", frozen]);
+        assert_eq!(code, Some(2), "old.{ext}: {output}");
+        assert_eq!(output["result"]["code"], "E_INVALID_SCHEMA");
+        let error = output["result"]["detail"]["errors"][0]["error"]
+            .as_str()
+            .unwrap();
+        assert!(error.contains("physical columns 1"), "old.{ext}: {error}");
+        assert!(error.contains("and 2"), "old.{ext}: {error}");
+        assert!(error.contains("redacted:ref:c1"), "old.{ext}: {error}");
+        assert!(error.contains("redacted:ref:c2"), "old.{ext}: {error}");
+        assert!(
+            !output.to_string().contains("loan_id"),
+            "old.{ext}: {output}"
+        );
+        assert!(
+            !output.to_string().contains("region"),
+            "old.{ext}: {output}"
+        );
+    }
+}
+
 // ---- worksheets ------------------------------------------------------------
 
 #[test]

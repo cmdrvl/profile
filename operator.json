@@ -43,7 +43,7 @@
     { "name": "validate", "description": "Validate profile against schema" },
     { "name": "lint", "description": "Validate + check against dataset" },
     { "name": "evolve", "description": "Create a mutable next-version draft from dataset drift and optional peek slice directives" },
-    { "name": "slice", "description": "Apply profile/ad-hoc pre_parse directives and registry-backed canonical CSV headers to emit clean CSV plus optional manifest" },
+    { "name": "slice", "description": "Apply profile/ad-hoc pre_parse directives and registry-backed canonical CSV headers to emit clean CSV plus optional manifest; collision refusals use physical positions and redaction markers by default, with raw headers only under --explicit" },
     { "name": "emit-discovery", "description": "Emit a profile.discovery.v0 candidate template from an already-sliced CSV" },
     { "name": "emit-verify-starter", "description": "Emit zero-retention starter verify rules from a frozen profile and optional stats" },
     { "name": "emit-ddl", "description": "Emit deterministic Postgres or Snowflake DDL from a frozen profile and optional stats" },

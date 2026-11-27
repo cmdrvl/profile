@@ -343,7 +343,7 @@ On a messy sheet the header row can be a title banner, a methodology paragraph o
 2. the CSV written by `profile slice --out` and the JSON written by `profile slice --emit-manifest`;
 3. the draft profile YAML written by `profile evolve --out`.
 
-Everything PRINTED to stdout or stderr stays header/example/numeric-summary-redacted by default (ordinal refs, or keyed markers with `PROFILE_REDACTION_KEY`) and shows names, examples, and exact numeric summaries only with `--explicit`. `draft init` and `lint` print no dataset header text on stdout; `lint` reports the profile's own column names. Not exempt and still open: the registry-ambiguity refusal text echoes raw physical headers.
+Everything PRINTED to stdout or stderr stays header/example/numeric-summary-redacted by default (ordinal refs, or keyed markers with `PROFILE_REDACTION_KEY`) and shows names, examples, and exact numeric summaries only with `--explicit`. `draft init` and `lint` print no dataset header text on stdout; `lint` reports the profile's own column names. Registry-ambiguity refusals report physical column positions with ordinal or keyed markers by default; raw physical header text appears only with `--explicit`.
 
 When a workbook has several sheets and none is chosen, `E_AMBIGUOUS_SHEET` / `E_SHEET_NOT_FOUND` carry a copy-pasteable `next_command` with the real subcommand and a shell-quoted path (`profile stats 'report (1).xlsx' --sheet 0`).
 
