@@ -1,40 +1,67 @@
 #![forbid(unsafe_code)]
 #![recursion_limit = "512"]
 
+#[cfg(feature = "cli")]
 use clap::{Parser, error::ErrorKind};
+#[cfg(feature = "cli")]
 use serde_json::Value;
 
+#[cfg(feature = "cli")]
 use crate::cli::args::{
     Cli, Command, DoctorArgs, DoctorCommand, DraftArgs, DraftCommand, WitnessArgs, WitnessCommand,
 };
+#[cfg(feature = "cli")]
 use crate::cli::exit::{EXIT_REFUSAL, EXIT_SUCCESS};
+#[cfg(feature = "cli")]
 use crate::output::json::CommandOutput;
+#[cfg(feature = "cli")]
 use crate::refusal::RefusalPayload;
 
+pub mod api;
+#[cfg(feature = "cli")]
 pub mod cli;
+#[cfg(feature = "cli")]
 pub mod diff;
+#[cfg(feature = "cli")]
 pub mod discovery;
+#[cfg(feature = "cli")]
 pub mod doctor;
+#[cfg(feature = "cli")]
 pub mod draft;
+#[cfg(feature = "cli")]
 pub mod evolve;
+#[cfg(feature = "cli")]
 pub mod freeze;
+#[cfg(feature = "cli")]
 pub mod inspect;
+#[cfg(feature = "cli")]
 pub mod lint;
+#[cfg(feature = "cli")]
 pub mod network;
+#[cfg(feature = "cli")]
 pub mod output;
+#[cfg(feature = "cli")]
 pub(crate) mod paths;
+#[cfg(feature = "cli")]
 pub mod projection;
 pub mod redaction;
 pub mod refusal;
+#[cfg(feature = "cli")]
 pub mod resolve;
 pub mod schema;
+#[cfg(feature = "cli")]
 pub mod slice;
+#[cfg(feature = "cli")]
 pub mod stats;
+#[cfg(all(feature = "cli", feature = "tabular"))]
 pub mod tabular_input;
+#[cfg(feature = "cli")]
 pub mod witness;
 
+#[cfg(feature = "cli")]
 type HandlerResult = Result<CommandOutput, RefusalPayload>;
 
+#[cfg(feature = "cli")]
 pub fn run() -> u8 {
     if let Some(display_mode) = detect_display_mode(std::env::args_os()) {
         return match display_mode {
@@ -103,6 +130,7 @@ pub fn run() -> u8 {
     }
 }
 
+#[cfg(feature = "cli")]
 fn precheck_redaction_key(command: &Command) -> Result<(), RefusalPayload> {
     match command {
         Command::Slice(_)
@@ -116,6 +144,7 @@ fn precheck_redaction_key(command: &Command) -> Result<(), RefusalPayload> {
     }
 }
 
+#[cfg(feature = "cli")]
 fn dispatch(
     command: &Command,
     no_witness: bool,
@@ -177,6 +206,7 @@ fn dispatch(
     }
 }
 
+#[cfg(feature = "cli")]
 fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Capabilities => "capabilities",
@@ -230,6 +260,7 @@ fn command_name(command: &Command) -> &'static str {
     }
 }
 
+#[cfg(feature = "cli")]
 fn is_doctor_fix_request(command: &Command) -> bool {
     matches!(
         command,
@@ -241,6 +272,7 @@ fn is_doctor_fix_request(command: &Command) -> bool {
     )
 }
 
+#[cfg(feature = "cli")]
 fn handle_describe() -> u8 {
     const OPERATOR_JSON: &str = include_str!("../operator.json");
 
@@ -253,6 +285,7 @@ fn handle_describe() -> u8 {
     EXIT_SUCCESS
 }
 
+#[cfg(feature = "cli")]
 enum DisplayMode {
     Describe,
     Schema {
@@ -261,11 +294,13 @@ enum DisplayMode {
     },
 }
 
+#[cfg(feature = "cli")]
 enum SchemaTarget {
     Profile,
     Discovery,
 }
 
+#[cfg(feature = "cli")]
 fn detect_display_mode<I, T>(args: I) -> Option<DisplayMode>
 where
     I: IntoIterator<Item = T>,
@@ -294,6 +329,7 @@ where
     }
 }
 
+#[cfg(feature = "cli")]
 fn handle_schema(json_output: bool, target: SchemaTarget) -> u8 {
     let schema = match target {
         SchemaTarget::Profile => output::generate_profile_schema(),

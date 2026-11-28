@@ -341,8 +341,9 @@ checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
 [[package]]
 name = "cmdrvl-tabular"
 version = "0.0.1"
-source = "git+https://github.com/cmdrvl/tabular?rev=f461f34#f461f34d221cbce098857706afe51adbee0872f4"
+source = "git+https://github.com/cmdrvl/tabular?rev=e83afb0ebe848a58c888cf619b105cbad19852e6#e83afb0ebe848a58c888cf619b105cbad19852e6"
 dependencies = [
+ "bytes",
  "calamine",
  "csv",
  "parquet",

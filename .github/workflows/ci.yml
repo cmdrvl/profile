@@ -28,6 +28,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
       - name: Formatting check
@@ -35,6 +36,9 @@ jobs:
 
       - name: Type check
         run: cargo check
+
+      - name: WASM library check (no default features)
+        run: cargo check --lib --target wasm32-unknown-unknown --no-default-features
 
       - name: Clippy (deny warnings)
         run: cargo clippy --all-targets -- -D warnings

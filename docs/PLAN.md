@@ -141,6 +141,19 @@ Commands:
   witness <query|last|count>  Query the witness ledger
 ```
 
+### Filesystem-free library API
+
+The library exports `api::inspect_bytes`, `api::slice_bytes`, `api::draft_bytes`,
+`api::suggest_key_bytes`, and `api::evolve_profiles` (with the short alias `api::evolve`). These
+operate on caller-owned CSV/TSV byte slices and explicit values only. They do not reach
+`std::fs`, clap, environment variables, the clock, or witness I/O. Their schema fields use the
+same default ordinal redaction and caller-supplied keyed HMAC option as the CLI; `slice_bytes`
+also returns canonical CSV bytes, and draft/evolve return validated profile objects.
+
+The CLI build keeps `cli`, `tabular`, and `zstd` enabled by default. The pure library build uses
+`--no-default-features`; CI checks it for `wasm32-unknown-unknown` with
+`cargo check --lib --target wasm32-unknown-unknown --no-default-features`.
+
 ### Subcommand details
 
 ```

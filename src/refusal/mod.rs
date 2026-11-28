@@ -4,6 +4,7 @@
 //! including all 8 refusal codes and their structured detail payloads.
 
 pub mod codes;
+#[cfg(feature = "cli")]
 pub mod finish;
 pub mod payload;
 

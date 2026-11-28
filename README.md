@@ -230,6 +230,30 @@ fingerprint peek vendor_export.csv --json --suggest > peek.json
 profile draft init vendor_export.csv --from-peek peek.json --out vendor_profile.yaml
 ```
 
+### Filesystem-free library API
+
+The `profile` library also exposes deterministic byte-slice entrypoints for browser and embedded
+callers: `inspect_bytes`, `slice_bytes` (including `preamble_skip`), `draft_bytes`,
+`suggest_key_bytes`, and `evolve_profiles` (also available as `evolve`). They accept caller-owned
+CSV/TSV bytes and return the same redacted schema fields as the CLI: ordinal column refs by
+default, or keyed HMAC markers when the caller supplies an already-validated `RedactionKey`. They
+do not read files, environment variables, the clock, or the witness ledger; the CLI's filesystem
+and witness behavior is unchanged. `slice_bytes` returns canonical CSV bytes and metadata, while
+`draft_bytes` and `evolve_profiles` return validated profile domain objects.
+
+The CLI and tabular reader remain enabled by default. For a pure library build, disable defaults:
+
+```toml
+profile = { version = "0.13.0", default-features = false }
+```
+
+That build has no CLI, tabular, zstd, clock, or witness surface and is checked in CI for
+`wasm32-unknown-unknown` with:
+
+```bash
+cargo check --lib --target wasm32-unknown-unknown --no-default-features
+```
+
 ### `profile suggest-key`
 
 Rank candidate key columns by uniqueness, null rate, and deterministic order. When no single column

@@ -8,11 +8,11 @@ repository = "https://github.com/cmdrvl/profile"
 
 [dependencies]
 blake3 = "1.8.2"
-chrono = { version = "0.4.40", default-features = false, features = ["clock", "serde", "std"] }
-clap = { version = "4.5.32", features = ["derive"] }
+chrono = { version = "0.4.40", default-features = false, features = ["serde", "std"], optional = true }
+clap = { version = "4.5.32", features = ["derive"], optional = true }
 csv = "1.3.1"
 # JSONL / Parquet / XLSX inputs (CSV and TSV keep profile's own reader). Pinned by commit.
-cmdrvl-tabular = { git = "https://github.com/cmdrvl/tabular", rev = "f461f34" }
+cmdrvl-tabular = { git = "https://github.com/cmdrvl/tabular", rev = "e83afb0ebe848a58c888cf619b105cbad19852e6", optional = true }
 encoding_rs = "0.8.35"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
@@ -25,7 +25,11 @@ sha2 = "0.10.8"
 ureq = { version = "2.12.1", features = ["json"], optional = true }
 
 [features]
-default = []
+default = ["cli", "tabular", "zstd"]
+cli = ["dep:clap", "std-clock"]
+tabular = ["dep:cmdrvl-tabular"]
+zstd = ["cmdrvl-tabular?/zstd"]
+std-clock = ["dep:chrono", "chrono/clock"]
 network = ["dep:ureq"]
 
 [dev-dependencies]

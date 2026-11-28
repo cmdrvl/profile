@@ -231,6 +231,7 @@ impl RefusalPayload {
     }
 
     /// Human-mode `slice` with neither `--out` nor `--explicit`: refuse instead of printing rows.
+    #[cfg(feature = "cli")]
     pub fn output_required(file: &std::path::Path) -> Self {
         Self::new(
             RefusalCode::OutputRequired,
